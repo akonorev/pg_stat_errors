@@ -1,0 +1,198 @@
+#!/bin/bash
+#
+
+# defaults
+#
+PGUSER=postgres
+DBNAME=postgres
+TYPES=20
+CNT=1000
+
+#---------------------------------------------
+
+
+init()
+{
+    psql -U $PGUSER -d $DBNAME <<EOF
+DROP TABLE IF EXISTS t2 ;
+DROP TABLE IF EXISTS t1 ;
+CREATE TABLE t1 (n int primary key);
+CREATE TABLE t2 (n serial primary key, p int references t1, dat timestamp);
+
+INSERT INTO t1
+SELECT gs::int FROM generate_series(1, 10000) as gs;
+EOF
+
+    # permission denied for table t3
+    psql -U postgres -d $DBNAME <<EOF
+DROP TABLE IF EXISTS t3;
+CREATE TABLE t3 (n int)
+EOF
+}
+
+
+dosql ()
+{
+    psql -U $PGUSER -d $DBNAME -c "$1"
+}
+
+
+help_usage()
+{   
+    selfname=$(basename $0)
+    echo -e "${selfname} is a bash script to generate errors on database PostgreSQL"
+    echo -e "\n  Usage: ${selfname} [OPTIONS]\n"
+    echo -e "  Options:"
+    echo -e "    -i, --init                 invokes initialization mode"
+    echo -e "    -c, --count NUM            count of generate errors (with sleeps)"
+    echo -e "    -t, --types NUM            count of error types generating. after 11, the type is sleep"
+    echo -e "    -d, --debug                print debugging output"
+    echo -e "    -D, --dbnames DBNAMES      list of database names comma separated without spaces"
+    echo -e "    -U, --usernames USERNAMES  list of users comma separated without spaces"
+    echo -e "    -?, --help                 show this help, then exit"
+    echo -e ""
+}
+
+
+#----main
+#
+
+if [[ "-i" == "${1}" || "--init" == "${1}" ]] ; then
+    init
+    exit 0
+fi
+
+if [[ "-?" == "${1}" || "--help" == "${1}" ]] ; then
+    help_usage
+    exit 0
+fi
+
+for i in "$@"
+do
+    case $i in
+	-t|--types)
+	    TYPES=$2
+	    shift
+            shift
+            ;;
+        -c|--count)
+            CNT=$2
+            shift
+	    shift
+            ;;
+        -U|--usernames)
+            IFS="," read -a list_user <<< $2
+	    shift
+            shift
+            ;;
+        -D|--dbnames)
+            IFS="," read -a list_dat <<< $2
+            shift
+	    shift
+            ;;
+
+	-d|--debug)
+	    DEBUG="yes"
+	    shift
+	    ;;
+	*)
+	    # unknown option
+	    ;;
+    esac
+done
+
+
+
+for ((i=1;i<=$CNT;i++))
+do
+    # get command type (1..TYPE). type 1..9 is errors.
+    # type is 1..9 - only errors stream without sleeps
+    # type is 10 and above - sleeps
+
+    cmdtype=$(( 1 + $RANDOM % $TYPES ))
+
+    # random of database and username
+
+    id_dat=$(( 0 + $RANDOM % ${#list_dat[@]} ))
+    DBNAME=${list_dat[$id_dat]}
+    if [[ "yes" == "$DEBUG" ]]; then
+        echo "dats:$DBNAMES"
+        echo "count:[${#list_dat[@]}], list:[${list_dat[@]}], id:[$id_dat]:"
+        echo "db:$DBNAME"
+    fi
+
+    id_user=$(( 0 + $RANDOM % ${#list_user[@]} ))
+    PGUSER=${list_user[$id_user]}
+    if [[ "yes" == "$DEBUG" ]]; then
+        echo "users:$PGUSERS"
+        echo "count:[${#list_user[@]}], list:[${list_user[@]}], id:[$id_user]:"
+        echo "user:$PGUSER"
+    fi
+
+    # get parameter
+    param1=$(( 1 + $RANDOM % 10000 ))
+    param2=$(( 4 + $RANDOM % 9 ))
+    param3=$(( 1 + $RANDOM % 3 ))
+
+    echo -n ".step $i cmdtype:[$cmdtype]:: "
+    [[ "yes" == "${DEBUG}" ]] && echo "param1:[$param1] param2:[$param2] param3:[$param3] "
+    case $cmdtype in
+	1) # primary key violation
+	    echo "primary key violation [$param1] "
+	    dosql "INSERT INTO t1 VALUES ($param1)"
+	    ;;
+	2) # foreign key violation
+	    echo "foreign key violation [$param1]"
+	    dosql "INSERT INTO t2 (p, dat) VALUES ($param1, current_timestamp)"
+	    ;;
+	3) # date/time field value out of range
+	    echo "date/time field value out of range: [$param1] [2021113$param2]"
+	    dosql "INSERT INTO t2 (p, dat) VALUES ($param1, '2021113$param2')"
+	    ;;
+	4) # invalid input syntax for integer
+	    echo "invalid input syntax for integer: [test$param2]"
+	    dosql "INSERT INTO t1 VALUES ('test$param2')"
+	    ;;
+	5) # relation already exists
+	    echo "relation already exists [$param3]"
+	    dosql "CREATE TABLE t$param3 (n int)"
+	    ;;
+	6) # relation does not exist
+	    echo "relation does not exist [t$param2]"
+	    dosql "SELECT n FROM t$param2"
+	    ;;
+	7) # column does not exist
+	    echo "column does not exist [p$param2]"
+	    dosql "SELECT p${param2} from t1"
+	    ;;
+	8) # prepared statement does not exist
+	    echo "prepared statement does not exist [pdo_stmt_000$param1]"
+	    dosql "DEALLOCATE pdo_stmt_000$param1"
+	    ;;
+	9) # permission denied for table t3
+            echo "permission denied for table t3"
+            dosql "SELECT n from t3"
+	    ;;
+       10) # plpgsql error. raise exception.
+            echo "plpgsql error: raise exception"
+            dosql "Do \$\$ \
+	          BEGIN \
+	          RAISE EXCEPTION 'Print the message of exception %', now(); \
+	          END \$\$"
+            ;;
+       11) # plpgsql warning: raise warning
+            echo "plpgsql warning: raise warning"
+            dosql "Do \$\$ \
+                  BEGIN \
+                  RAISE WARNING 'Print the message of warning %', now(); \
+                  END \$\$"
+            ;;
+        *) # sleep
+	    echo "sleep [$param2]"
+	    sleep $param2
+	    ;;
+    esac
+done
+
+echo "done"
+

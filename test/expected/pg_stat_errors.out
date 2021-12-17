@@ -1,0 +1,160 @@
+DROP EXTENSION pg_stat_errors;
+ERROR:  extension "pg_stat_errors" does not exist
+CREATE EXTENSION pg_stat_errors;
+-- first make sure that catcache is loaded to avoid physical reads
+SELECT count(*) >= 0 FROM pg_stat_errors;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT pg_stat_errors_reset();
+ pg_stat_errors_reset 
+----------------------
+ 
+(1 row)
+
+-- dummy query
+SELECT 1 AS dummy;
+ dummy 
+-------
+     1
+(1 row)
+
+SELECT * FROM pg_stat_errors;
+ userid | dbid | elevel | eclass | ecode | errors | last_time 
+--------+------+--------+--------+-------+--------+-----------
+(0 rows)
+
+-- syntax error
+CREATE TABLE t1 (int);
+ERROR:  syntax error at or near ";"
+LINE 1: CREATE TABLE t1 (int);
+                             ^
+CREATE TABLE t1 (n int primary key);
+CREATE TABLE t2 (n int primary key, p int references t1, dat timestamp);
+-- primary key violation (15 errors) 
+INSERT INTO t1 VALUES (1);
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+INSERT INTO t1 VALUES (1);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (n)=(1) already exists.
+-- foreign key violation
+INSERT INTO t2 VALUES (1,2,null);
+ERROR:  insert or update on table "t2" violates foreign key constraint "t2_p_fkey"
+DETAIL:  Key (p)=(2) is not present in table "t1".
+-- date/time field value out of range
+INSERT INTO t2 VALUES (1,1,'20210931');
+ERROR:  date/time field value out of range: "20210931"
+LINE 1: INSERT INTO t2 VALUES (1,1,'20210931');
+                                   ^
+-- invalid input syntax for integer
+INSERT INTO t1 VALUES ('test');
+ERROR:  invalid input syntax for integer: "test"
+LINE 1: INSERT INTO t1 VALUES ('test');
+                               ^
+-- relation already exists
+CREATE TABLE t1 (n int primary key);
+ERROR:  relation "t1" already exists
+-- relation does not exist
+SELECT n FROM t3;
+ERROR:  relation "t3" does not exist
+LINE 1: SELECT n FROM t3;
+                      ^
+-- column does not exist
+SELECT p from t1;
+ERROR:  column "p" does not exist
+LINE 1: SELECT p from t1;
+               ^
+-- prepared statement does not exist
+DEALLOCATE pdo_stmt_00000001;
+ERROR:  prepared statement "pdo_stmt_00000001" does not exist
+-- raise exception. ERROR
+DO $$
+BEGIN
+RAISE EXCEPTION 'Test raise exception';
+END;
+$$
+;
+ERROR:  Test raise exception
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at RAISE
+-- raise warning. WARNING
+DO $$
+BEGIN
+RAISE WARNING 'Test raise warning';
+END;
+$$
+;
+WARNING:  Test raise warning
+SELECT usename, datname, error_level, error_class, error_state, errors FROM dba_stat_errors 
+ WHERE datname = current_database() 
+ ORDER BY error_state, errors;
+ usename  |      datname       | error_level | error_class | error_state | errors 
+----------+--------------------+-------------+-------------+-------------+--------
+ postgres | contrib_regression | WARNING     | 01          | 01000       |      1
+ postgres | contrib_regression | ERROR       | 22          | 22008       |      1
+ postgres | contrib_regression | ERROR       | 22          | 22P02       |      1
+ postgres | contrib_regression | ERROR       | 23          | 23503       |      1
+ postgres | contrib_regression | ERROR       | 26          | 26000       |      1
+ postgres | contrib_regression | ERROR       | 42          | 42703       |      1
+ postgres | contrib_regression | ERROR       | 42          | 42P01       |      1
+ postgres | contrib_regression | ERROR       | 42          | 42P07       |      1
+ postgres | contrib_regression | ERROR       | P0          | P0001       |      1
+(9 rows)
+
+SELECT pg_stat_errors_total_errors();
+ pg_stat_errors_total_errors 
+-----------------------------
+                          25
+(1 row)
+
+SELECT dealloc FROM pg_stat_errors_info;
+ dealloc 
+---------
+       1
+(1 row)
+
+DROP TABLE t2;
+DROP TABLE t1;
+DROP EXTENSION pg_stat_errors;
