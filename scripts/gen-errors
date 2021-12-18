@@ -3,8 +3,9 @@
 
 # defaults
 #
-PGUSER=postgres
-DBNAME=postgres
+# arrays of users and databases
+list_dat=(postgres)
+list_user=(postgres)
 TYPES=20
 CNT=1000
 
@@ -54,6 +55,16 @@ help_usage()
 }
 
 
+info()
+{
+    echo ""
+    echo "users:     ${list_user[*]}"
+    echo "datnames:  ${list_dat[*]}"
+    echo "types:     $TYPES"
+    echo "count:     $CNT"
+    echo ""
+}
+
 #----main
 #
 
@@ -102,12 +113,14 @@ do
 done
 
 
+info
+
 
 for ((i=1;i<=$CNT;i++))
 do
-    # get command type (1..TYPE). type 1..9 is errors.
-    # type is 1..9 - only errors stream without sleeps
-    # type is 10 and above - sleeps
+    # get command type (1..TYPE). type 1..11 is errors.
+    # type is 1..11 - only errors stream without sleeps
+    # type is 12 and above - sleeps
 
     cmdtype=$(( 1 + $RANDOM % $TYPES ))
 
