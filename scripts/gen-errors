@@ -34,6 +34,7 @@ EOF
 
 dosql ()
 {
+    [[ "yes" == "${DEBUG}" ]] && echo "DEBUG::  dosql:  pguser:[$PGUSER]  dbname:[$DBNAME]  command:[${1:0:20}] "
     psql -U $PGUSER -d $DBNAME -c "$1"
 }
 
@@ -58,8 +59,8 @@ help_usage()
 info()
 {
     echo ""
-    echo "users:     ${list_user[*]}"
-    echo "datnames:  ${list_dat[*]}"
+    echo "users:     [${#list_user[@]}]:${list_user[*]}"
+    echo "datnames:  [${#list_dat[@]}]:${list_dat[*]}"
     echo "types:     $TYPES"
     echo "count:     $CNT"
     echo ""
@@ -92,12 +93,12 @@ do
 	    shift
             ;;
         -U|--usernames)
-            IFS="," read -a list_user <<< $2
+            IFS="," read -a list_user <<< "$2"
 	    shift
             shift
             ;;
         -D|--dbnames)
-            IFS="," read -a list_dat <<< $2
+            IFS="," read -a list_dat <<< "$2"
             shift
 	    shift
             ;;
@@ -129,17 +130,17 @@ do
     id_dat=$(( 0 + $RANDOM % ${#list_dat[@]} ))
     DBNAME=${list_dat[$id_dat]}
     if [[ "yes" == "$DEBUG" ]]; then
-        echo "dats:$DBNAMES"
-        echo "count:[${#list_dat[@]}], list:[${list_dat[@]}], id:[$id_dat]:"
-        echo "db:$DBNAME"
+        echo "DEBUG::  dats:$DBNAMES"
+        echo "DEBUG::  count:[${#list_dat[@]}], list:[${list_dat[@]}], id:[$id_dat]:"
+        echo "DEBUG::  db:$DBNAME"
     fi
 
     id_user=$(( 0 + $RANDOM % ${#list_user[@]} ))
     PGUSER=${list_user[$id_user]}
     if [[ "yes" == "$DEBUG" ]]; then
-        echo "users:$PGUSERS"
-        echo "count:[${#list_user[@]}], list:[${list_user[@]}], id:[$id_user]:"
-        echo "user:$PGUSER"
+        echo "DEBUG::  users:$PGUSERS"
+        echo "DEBUG::  count:[${#list_user[@]}], list:[${list_user[@]}], id:[$id_user]:"
+        echo "DEBUG::  user:$PGUSER"
     fi
 
     # get parameter
@@ -148,7 +149,7 @@ do
     param3=$(( 1 + $RANDOM % 3 ))
 
     echo -n ".step $i cmdtype:[$cmdtype]:: "
-    [[ "yes" == "${DEBUG}" ]] && echo "param1:[$param1] param2:[$param2] param3:[$param3] "
+    [[ "yes" == "${DEBUG}" ]] && echo "DEBUG::  param1:[$param1] param2:[$param2] param3:[$param3] "
     case $cmdtype in
 	1) # primary key violation
 	    echo "primary key violation [$param1] "
