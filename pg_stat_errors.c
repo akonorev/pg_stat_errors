@@ -206,6 +206,7 @@ static pgseEntry *entry_alloc(pgseHashKey *key);
 static void entry_dealloc(void);
 static void entry_reset(void);
 static void pgse_store(const TimestampTz etime, const char *query, const ErrorData *edata);
+static void pgse_store_errorinfo(const ErrorInfo *eInfo);
 
 
 /*
@@ -317,6 +318,7 @@ pgse_shmem_startup(void)
 	FILE            *file = NULL;
 	uint32          header;
 	int32           num;
+	int32           num_last;
 	int32           pgver;
 	int32           i;
 
@@ -444,6 +446,21 @@ pgse_shmem_startup(void)
 	if (fread(&pgse->stats, sizeof(pgseGlobalStats), 1, file) != 1)
 		goto read_error;
 
+	/* load last errors */
+	if (fread(&num_last, sizeof(int32), 1, file) != 1)
+		goto read_error;
+
+	for (i = 0; i < num_last; i++)
+	{
+		ErrorInfo   temp;
+
+		if (fread(&temp, sizeof(ErrorInfo), 1, file) != 1)
+			goto read_error;
+
+		pgse_store_errorinfo(&temp);
+	}
+
+
 	FreeFile(file);
 
 	/*
@@ -487,6 +504,7 @@ pgse_shmem_shutdown(int code, Datum arg)
 	FILE             *file;
 	HASH_SEQ_STATUS  hash_seq;
 	int32            num_entries;
+	int32            j, num_last, rbuf_indx;
 	pgseEntry        *entry;
 
 	/* Don't try to dump during a crash. */
@@ -530,6 +548,32 @@ pgse_shmem_shutdown(int code, Datum arg)
 	/* Dump global statistics for pg_stat_errors */
 	if (fwrite(&pgse->stats, sizeof(pgseGlobalStats), 1, file) != 1)
 		goto error;
+
+	/* save last errors */
+	num_last = pgse->eid.max_eid;
+	if (fwrite(&num_last, sizeof(int32), 1, file) != 1)
+		goto error;
+
+	/* store the latest errors in the order of occurrence */
+	if ( (pgse->eid.max_eid != pgse_max_last) ||
+	     (  (pgse->eid.max_eid == pgse_max_last) &&
+	        ((pgse->eid.curr_eid + 1) == pgse->eid.max_eid)  )
+	   )
+		rbuf_indx = 0;
+	else
+		rbuf_indx = pgse->eid.curr_eid + 1;
+
+	for (j=0; j<num_last; j++)
+	{
+		if (fwrite(&pgse_errors[rbuf_indx].error, sizeof(ErrorInfo), 1, file) != 1)
+			goto error;
+
+		rbuf_indx++;
+
+		if (rbuf_indx >= pgse_max_last)
+			rbuf_indx = 0;
+	}
+
 
 	if (FreeFile(file))
 	{
@@ -831,6 +875,32 @@ pgse_store_error(const TimestampTz etm, const Oid dbid, const Oid userid, const 
 		e->error.ecode = edata->sqlerrcode;
 		_snprintf(e->error.query, query, query_len, MAX_QUERY_LEN);
 		_snprintf(e->error.message, edata->message, message_len, ERROR_MESSAGE_LEN);
+
+		SpinLockRelease(&e->mutex);
+	}
+}
+
+static void
+pgse_store_errorinfo(const ErrorInfo *eInfo)
+{
+	pgse->eid.curr_eid = pgse->eid.next_eid;
+	pgse->eid.next_eid++;
+
+	if (pgse->eid.next_eid >= pgse_max_last)
+		pgse->eid.next_eid = 0;
+
+	if (pgse->eid.max_eid < pgse_max_last)
+		pgse->eid.max_eid++;
+
+	/* volatile block */
+	{
+		volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[pgse->eid.curr_eid];
+
+		SpinLockAcquire(&e->mutex);
+
+		/* reset old error */
+		memset(&pgse_errors[pgse->eid.curr_eid].error, 0, sizeof(ErrorInfo));
+		memcpy((void *)&e->error, eInfo, sizeof(ErrorInfo));
 
 		SpinLockRelease(&e->mutex);
 	}
