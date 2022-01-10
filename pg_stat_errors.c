@@ -47,6 +47,7 @@ static const uint32 PGSE_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 #define PGSE_DEALLOC_PERCENT       5    /* free this % of entries at once */
 #define SQLSTATE_LEN              20
 #define ERROR_MESSAGE_LEN        160
+#define MAX_QUERY_LEN           1024
 
 
 /*
@@ -76,6 +77,21 @@ typedef struct Counters
 
 
 /*
+ * The last errors kept within pgsqEntryError
+ */
+typedef struct ErrorInfo
+{
+	TimestampTz     etime;                          /* timestamp of error */
+	Oid             userid;                         /* user OID */
+	Oid             dbid;                           /* database OID */
+	char            query[MAX_QUERY_LEN];
+	int             elevel;                         /* error level */
+	int             ecode;                          /* encoded ERRSTATE */
+	char            message[ERROR_MESSAGE_LEN];     /* primary error message (translated) */
+} ErrorInfo;
+
+
+/*
  * Global statistics for pg_stat_errors
  */
 typedef struct pgseGlobalStats
@@ -84,6 +100,13 @@ typedef struct pgseGlobalStats
 	TimestampTz     stats_reset;    /* timestamp with all stats reset */
 } pgseGlobalStats;
 
+typedef struct pgseGlobalEID
+{
+	uint32          curr_eid;       /* current index of errors array */
+	uint32          next_eid;       /* next index of errors array */
+	uint32          max_eid;        /* actual number of last errors if the number
+	                                 * of errors is less than pgse_max_last */
+} pgseGlobalEID;
 
 /*
  * Statistics per key
@@ -96,6 +119,14 @@ typedef struct pgseEntry
 	slock_t         mutex;          /* protects the counters only */
 } pgseEntry;
 
+/*
+ * Last Errors. The simple ring buffer.
+ */
+typedef struct pgseEntryError
+{
+	ErrorInfo       error;          /* the error for this key */
+	slock_t         mutex;          /* protects the error only */
+} pgseEntryError;
 
 /*
  * Global shared state
@@ -106,6 +137,7 @@ typedef struct pgseSharedState
 	slock_t         mutex;          /* protects following fields only: */
 	int64           total_errors;
 	int64           last_skipped;
+	pgseGlobalEID   eid;
 	pgseGlobalStats stats;          /* global statistics for pgse */
 } pgseSharedState;
 
@@ -120,16 +152,18 @@ static emit_log_hook_type prev_emit_log_hook = NULL;
 /* Links to shared memory state */
 static pgseSharedState *pgse = NULL;
 static HTAB *pgse_hash = NULL;
+static pgseEntryError *pgse_errors = NULL;
 
 /*---- GUC variables ----*/
 static int      pgse_max;               /* max # errors type to track */
+static int      pgse_max_last;          /* max # of last errors */
 static bool     pgse_save;              /* whether to save stats across shutdown */
 
 #define _snprintf(_str_dst, _str_src, _len, _max_len)\
 	memcpy((void *)_str_dst, _str_src, _len < _max_len ? _len : _max_len)
 
 #define isInitialized() \
-	( pgse && pgse_hash && sysinit )
+	( pgse && pgse_hash && pgse_errors && sysinit )
 
 #define pgse_reset() \
 	do { \
@@ -137,11 +171,13 @@ static bool     pgse_save;              /* whether to save stats across shutdown
 		SpinLockAcquire(&s->mutex); \
 		s->last_skipped = 0; \
 		s->total_errors = 0; \
+		s->eid.curr_eid = 0; \
+		s->eid.next_eid = 0; \
+		s->eid.max_eid = 0; \
 		s->stats.dealloc = 0; \
 		s->stats.stats_reset = GetCurrentTimestamp(); \
 		SpinLockRelease(&s->mutex); \
 	} while(0)
-
 
 /*---- Function declarations ----*/
 
@@ -155,6 +191,7 @@ PG_FUNCTION_INFO_V1(pg_stat_errors_info);
 PG_FUNCTION_INFO_V1(pg_stat_errors_glevel);
 PG_FUNCTION_INFO_V1(pg_stat_errors_gcode);
 PG_FUNCTION_INFO_V1(pg_stat_errors_gmessage);
+PG_FUNCTION_INFO_V1(pg_stat_errors_last);
 
 static void pgse_shmem_startup(void);
 static void pgse_shmem_shutdown(int code, Datum arg);
@@ -168,7 +205,7 @@ static Size pgse_memsize(void);
 static pgseEntry *entry_alloc(pgseHashKey *key);
 static void entry_dealloc(void);
 static void entry_reset(void);
-static void pgse_store(const TimestampTz etime, const ErrorData *edata);
+static void pgse_store(const TimestampTz etime, const char *query, const ErrorData *edata);
 
 
 /*
@@ -196,6 +233,19 @@ _PG_init(void)
 	                        NULL,
 	                        &pgse_max,
 	                        100,
+	                        10,
+	                        INT_MAX,
+	                        PGC_POSTMASTER,
+	                        0,
+	                        NULL,
+	                        NULL,
+	                        NULL);
+
+	DefineCustomIntVariable("pg_stat_errors.max_last",
+	                        "Sets the maximum number of last errors.",
+	                        NULL,
+	                        &pgse_max_last,
+	                        20,
 	                        10,
 	                        INT_MAX,
 	                        PGC_POSTMASTER,
@@ -276,6 +326,7 @@ pgse_shmem_startup(void)
 	/* reset in case this is a restart within the postmaster */
 	pgse = NULL;
 	pgse_hash = NULL;
+	pgse_errors = NULL;
 
 	/*
 	 * Create or attach to the shared memory state, including hash table
@@ -315,6 +366,13 @@ pgse_shmem_startup(void)
                                   &info,
                                   HASH_ELEM | HASH_BLOBS);
 #endif
+	{
+		int arr_size = sizeof(pgseEntryError) * pgse_max_last;
+
+		pgse_errors = (pgseEntryError *) ShmemAlloc(arr_size);
+		/* Mark array as empty */
+		memset(pgse_errors, 0, arr_size);
+	}
 
 	LWLockRelease(AddinShmemInitLock);
 
@@ -361,6 +419,7 @@ pgse_shmem_startup(void)
 	   )
 		goto data_error;
 
+	/* load statistics of errors */
 	for (i = 0; i < num; i++)
 	{
 		pgseEntry   temp;
@@ -451,6 +510,8 @@ pgse_shmem_shutdown(int code, Datum arg)
 		goto error;
 	if (fwrite(&(pgse->total_errors), sizeof(uint64), 1, file) != 1)
 		goto error;
+
+	/* save statistics of errors */
 	num_entries = hash_get_num_entries(pgse_hash);
 	if (fwrite(&num_entries, sizeof(int32), 1, file) != 1)
 		goto error;
@@ -517,6 +578,7 @@ pgse_emit_log_hook(ErrorData *edata)
 	if (edata->elevel >= WARNING)
 	{
 		pgse_store(GetCurrentTimestamp(), 
+		           debug_query_string ? debug_query_string : "",
 		           edata);
 	}
 exit:
@@ -571,9 +633,10 @@ pgse_memsize(void)
 
 	size = MAXALIGN(sizeof(pgseSharedState));
 	size = add_size(size, hash_estimate_size(pgse_max, sizeof(pgseEntry)));
+	size += MAXALIGN(sizeof(pgseEntryError)*pgse_max_last);
 
-	elog(DEBUG1, "pg_stat_errors: %s(): SharedState: [%lu] Entries: [%lu] total: [%lu] ", __FUNCTION__,
-	        sizeof(pgseSharedState), hash_estimate_size(pgse_max, sizeof(pgseEntry)), size);
+	elog(DEBUG1, "pg_stat_errors: %s(): SharedState: [%lu] Entries: [%lu] EntryErrors: [%lu] total: [%lu] ", __FUNCTION__,
+	        sizeof(pgseSharedState), hash_estimate_size(pgse_max, sizeof(pgseEntry)), sizeof(pgseEntryError)*pgse_max_last, size);
 
 	return size;
 }
@@ -705,6 +768,16 @@ entry_reset(void)
 	LWLockRelease(pgse->lock);
 }
 
+/*
+ * Release all last errors.
+ */
+static void
+errors_reset(void)
+{
+	LWLockAcquire(pgse->lock, LW_EXCLUSIVE);
+	memset(pgse_errors, 0, (sizeof(pgseEntryError) * pgse_max_last));
+	LWLockRelease(pgse->lock);
+}
 
 /*
  * Reset all statistics of errors
@@ -717,8 +790,50 @@ pg_stat_errors_reset(PG_FUNCTION_ARGS)
 		        (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 		         errmsg("pg_stat_errors must be loaded via shared_preload_libraries")));
 	entry_reset();
+	errors_reset();
 	pgse_reset();
 	PG_RETURN_VOID();
+}
+
+
+/*
+ * Store last errors
+ *
+ * Caller must hold an exclusive lock on pgse->lock.
+ */
+static void
+pgse_store_error(const TimestampTz etm, const Oid dbid, const Oid userid, const char *query, const ErrorData *edata)
+{
+	pgse->eid.curr_eid = pgse->eid.next_eid;
+	pgse->eid.next_eid++;
+
+	if (pgse->eid.next_eid >= pgse_max_last)
+		pgse->eid.next_eid = 0;
+
+	if (pgse->eid.max_eid < pgse_max_last)
+		pgse->eid.max_eid++;
+
+	/* volatile block */
+	{
+		int message_len = strlen (edata->message);
+		int query_len = strlen (query);
+		volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[pgse->eid.curr_eid];
+
+		SpinLockAcquire(&e->mutex);
+
+		/* reset old error */
+		memset(&pgse_errors[pgse->eid.curr_eid].error, 0, sizeof(ErrorInfo));
+
+		e->error.etime = etm;
+		e->error.userid = userid;
+		e->error.dbid = dbid;
+		e->error.elevel = edata->elevel;
+		e->error.ecode = edata->sqlerrcode;
+		_snprintf(e->error.query, query, query_len, MAX_QUERY_LEN);
+		_snprintf(e->error.message, edata->message, message_len, ERROR_MESSAGE_LEN);
+
+		SpinLockRelease(&e->mutex);
+	}
 }
 
 
@@ -756,7 +871,7 @@ pgse_update_counters(const TimestampTz etm, const pgseEntry *entry, const ErrorD
  * Store some statistics for key and whole database cluster
  */
 static void
-pgse_store(const TimestampTz etm, const ErrorData *edata)
+pgse_store(const TimestampTz etm, const char *query, const ErrorData *edata)
 {
 	pgseHashKey      key;
 	pgseEntry        *entry;
@@ -788,6 +903,8 @@ pgse_store(const TimestampTz etm, const ErrorData *edata)
 	}
 
 	pgse_update_counters(etm, entry, edata);
+	/* store last errors */
+	pgse_store_error(etm, key.dbid, key.userid, query, edata);
 
 	LWLockRelease(pgse->lock);
 }
@@ -1013,5 +1130,103 @@ pg_stat_errors(PG_FUNCTION_ARGS)
 	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
+}
+
+
+#define PG_STAT_ERRORS_LAST_COLS     7
+
+/*
+ * Retrieve last N errors
+ */
+Datum
+pg_stat_errors_last(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo       *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc           tupdesc;
+	Tuplestorestate     *tupstore;
+	MemoryContext       per_query_ctx;
+	MemoryContext       oldcontext;
+	int                 j, num_last;
+
+	/* array of errors must exist already */
+	if ( !isInitialized() )
+		ereport(ERROR,
+		        (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+		         errmsg("pg_stat_errors must be loaded via shared_preload_libraries")));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Switch into long-lived context to construct returned data structures */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	if (tupdesc->natts != PG_STAT_ERRORS_LAST_COLS)
+		elog(ERROR, "incorrect number of output arguments, required %d", tupdesc->natts);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * With a large array table, we might be holding the lock rather longer
+	 * than one could wish. However, this only blocks creation of new array
+	 * entries, and the larger the array the less likely that is to be needed.
+	 * So we can hope this is okay.  Perhaps someday we'll decide we need to
+	 * partition the array to limit the time spent holding any one lock.
+	 */
+	LWLockAcquire(pgse->lock, LW_SHARED);
+
+	/* output only the actual number of errors if the number of errors
+	 * is less than pgse_max_last */
+	num_last = pgse->eid.max_eid;
+
+	for (j=0; j<num_last; j++)
+	{
+		Datum           values[PG_STAT_ERRORS_LAST_COLS];
+		bool            nulls[PG_STAT_ERRORS_LAST_COLS];
+		int             i = 0;
+		ErrorInfo       tmp;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		/* copy counters to a local variable to keep locking time short */
+		{
+			volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[j];
+
+			SpinLockAcquire(&e->mutex);
+			tmp = e->error;
+			SpinLockRelease(&e->mutex);
+		}
+		values[i++] = TimestampTzGetDatum(tmp.etime);
+		values[i++] = ObjectIdGetDatum(tmp.userid);
+		values[i++] = ObjectIdGetDatum(tmp.dbid);
+		values[i++] = CStringGetTextDatum(tmp.query);
+		values[i++] = Int64GetDatumFast(tmp.elevel);
+		values[i++] = Int64GetDatumFast(tmp.ecode);
+		values[i++] = CStringGetTextDatum(tmp.message);
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+	/* clean up and return the tuplestore */
+	LWLockRelease(pgse->lock);
+	tuplestore_donestoring(tupstore);
+
+	return (Datum)0;
 }
 
