@@ -1,4 +1,11 @@
 
+### pg_stat_errors v1.1 (Dec 11, 2021) ###
+
+* Adds parameter pg_stat_errors.max_last
+* Adds new table pg_stat_errors_last to show last N errors as is
+* Adds a view dba_stat_errors_last for more readable output
+* Update regression tests
+
 ### pg_stat_errors v1.0 (September 25, 2021) ###
 
 * Initial 1.0
