@@ -80,6 +80,31 @@ DETAIL:  Key (n)=(1) already exists.
 INSERT INTO t1 VALUES (1);
 ERROR:  duplicate key value violates unique constraint "t1_pkey"
 DETAIL:  Key (n)=(1) already exists.
+-- version 1.1 (overlap test. step 1)
+SELECT usename, datname, error_level, error_state, error_message FROM dba_stat_errors_last
+ WHERE datname = current_database()
+-- ORDER BY error_time
+;
+ usename  |      datname       | error_level | error_state |                      error_message                       
+----------+--------------------+-------------+-------------+----------------------------------------------------------
+ postgres | contrib_regression | ERROR       | 42601       | syntax error at or near ";"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+(16 rows)
+
 -- foreign key violation
 INSERT INTO t2 VALUES (1,2,null);
 ERROR:  insert or update on table "t2" violates foreign key constraint "t2_p_fkey"
@@ -110,6 +135,64 @@ LINE 1: SELECT p from t1;
 -- prepared statement does not exist
 DEALLOCATE pdo_stmt_00000001;
 ERROR:  prepared statement "pdo_stmt_00000001" does not exist
+-- version 1.1 (overlap test. step 2)
+SELECT usename, datname, error_level, error_state, error_message FROM dba_stat_errors_last
+ WHERE datname = current_database()
+-- ORDER BY error_time
+;
+ usename  |      datname       | error_level | error_state |                               error_message                                
+----------+--------------------+-------------+-------------+----------------------------------------------------------------------------
+ postgres | contrib_regression | ERROR       | 42P01       | relation "t3" does not exist
+ postgres | contrib_regression | ERROR       | 42703       | column "p" does not exist
+ postgres | contrib_regression | ERROR       | 26000       | prepared statement "pdo_stmt_00000001" does not exist
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23503       | insert or update on table "t2" violates foreign key constraint "t2_p_fkey"
+ postgres | contrib_regression | ERROR       | 22008       | date/time field value out of range: "20210931"
+ postgres | contrib_regression | ERROR       | 22P02       | invalid input syntax for integer: "test"
+ postgres | contrib_regression | ERROR       | 42P07       | relation "t1" already exists
+(20 rows)
+
+-- version 1.1 (overlap test. step 3)
+SELECT usename, datname, error_level, error_state, error_message FROM dba_stat_errors_last
+ WHERE datname = current_database()
+ ORDER BY error_time
+;
+ usename  |      datname       | error_level | error_state |                               error_message                                
+----------+--------------------+-------------+-------------+----------------------------------------------------------------------------
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23505       | duplicate key value violates unique constraint "t1_pkey"
+ postgres | contrib_regression | ERROR       | 23503       | insert or update on table "t2" violates foreign key constraint "t2_p_fkey"
+ postgres | contrib_regression | ERROR       | 22008       | date/time field value out of range: "20210931"
+ postgres | contrib_regression | ERROR       | 22P02       | invalid input syntax for integer: "test"
+ postgres | contrib_regression | ERROR       | 42P07       | relation "t1" already exists
+ postgres | contrib_regression | ERROR       | 42P01       | relation "t3" does not exist
+ postgres | contrib_regression | ERROR       | 42703       | column "p" does not exist
+ postgres | contrib_regression | ERROR       | 26000       | prepared statement "pdo_stmt_00000001" does not exist
+(20 rows)
+
 -- raise exception. ERROR
 DO $$
 BEGIN

@@ -34,6 +34,11 @@ INSERT INTO t1 VALUES (1);
 INSERT INTO t1 VALUES (1);
 INSERT INTO t1 VALUES (1);
 
+-- version 1.1 (overlap test. step 1)
+SELECT usename, datname, error_level, error_state, error_message FROM dba_stat_errors_last
+ WHERE datname = current_database()
+-- ORDER BY error_time
+;
 
 -- foreign key violation
 INSERT INTO t2 VALUES (1,2,null);
@@ -55,6 +60,18 @@ SELECT p from t1;
 
 -- prepared statement does not exist
 DEALLOCATE pdo_stmt_00000001;
+
+-- version 1.1 (overlap test. step 2)
+SELECT usename, datname, error_level, error_state, error_message FROM dba_stat_errors_last
+ WHERE datname = current_database()
+-- ORDER BY error_time
+;
+
+-- version 1.1 (overlap test. step 3)
+SELECT usename, datname, error_level, error_state, error_message FROM dba_stat_errors_last
+ WHERE datname = current_database()
+ ORDER BY error_time
+;
 
 -- raise exception. ERROR
 DO $$
