@@ -47,6 +47,9 @@ The following GUCs can be configured, in ``postgresql.conf``:
   discarded. The number of times such information was discarded can be seen in the 
   ``pg_stat_errors_info`` view. The default value is 100. This parameter can only be set 
   at server start.
+- *pg_stat_errors.max_last* (int, default 20): is the maximum number of last errors
+  tracked by the module (i.e., the maximum number of rows in the ``pg_stat_errors_last``
+  view). The default value is 20. This parameter can only be set at server start.
 - *pg_stat_errors.save* (bool, default on): specifies whether to save errors statistics 
   across server shutdowns. If it is off then statistics are not saved at shutdown nor 
   reloaded at server start. The default value is on. This parameter can only be set in 
@@ -112,6 +115,58 @@ The same as a pg_stat_errors, but more human readable.
 +---------------------+--------------------------+---------------------------------------------------+
 | last_time           | timestamp with time zone | Time when the last error was occurred             |
 +---------------------+--------------------------+---------------------------------------------------+
+
+pg_stat_errors_last view
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+List of last errors. This view contains up to ``pg_stat_errors.max_last`` rows.
+
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Name          | Type                     | Description                                                                                                                                          |
++===============+==========================+======================================================================================================================================================+
+| error_time    | timestamp with time zone | Time of error                                                                                                                                        |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| userid        | oid                      | OID of user who error                                                                                                                                |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| dbid          | oid                      | OID of database in which the error was occured                                                                                                       |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| query         | text                     | Text of query                                                                                                                                        |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| elevel        | bigint                   | Error level (internal code). To represent in human readable form, use the function pg_stat_errors_glevel                                             |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ecode         | bigint                   | Code of error state (internal code). To represent error code in human readable form, use the functions pg_stat_errors_gcode, pg_stat_errors_gmessage |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+| error_message | text                     | The error message                                                                                                                                    |
++---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+
+dba_stat_errors_last view
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same as a pg_stat_errors_last, but more human readable.
+
++---------------+--------------------------+---------------------------------------------------+
+| Name          | Type                     | Description                                       |
++===============+==========================+===================================================+
+| error_time    | timestamp with time zone | Time of error                                     |
++---------------+--------------------------+---------------------------------------------------+
+| userid        | oid                      | OID of user who error                             |
++---------------+--------------------------+---------------------------------------------------+
+| usename       | name                     | Name of the user                                  |
++---------------+--------------------------+---------------------------------------------------+
+| dbid          | oid                      | OID of database in which the error was occured    |
++---------------+--------------------------+---------------------------------------------------+
+| datname       | name                     | Name of the database                              |
++---------------+--------------------------+---------------------------------------------------+
+| query         | text                     | Text of query                                     |
++---------------+--------------------------+---------------------------------------------------+
+| error_level   | text                     | The error level (WARNING, ERROR, FATAL, PANIC)    |
++---------------+--------------------------+---------------------------------------------------+
+| error_state   | text                     | Error state as a five-character code              |
++---------------+--------------------------+---------------------------------------------------+
+| error_message | text                     | The error message                                 |
++---------------+--------------------------+---------------------------------------------------+
+
 
 pg_stat_errors_total_errors view and function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -267,6 +322,34 @@ Examples
       10 | postgres | 13237 | postgres | ERROR       | 42          | syntax_error_or_access_rule_violation       | 42703       | undefined_column              |      6 | 2021-11-13 00:59:48.703543+03
       10 | postgres | 13237 | postgres | FATAL       | 08          | connection_exception                        | 08006       | connection_failure            |    175 | 2021-11-19 09:53:36.775614+03
  (22 rows)
+
+::
+
+ postgres=# select * from dba_stat_errors_last order by error_time;
+           error_time           | userid | usename  | dbid  | datname  |                          query                           | error_level | error_state |                    error_message                     
+ -------------------------------+--------+----------+-------+----------+----------------------------------------------------------+-------------+-------------+------------------------------------------------------
+  2021-12-30 01:56:01.752414+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (413, '20211139')         | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.757654+03 |     10 | postgres | 12405 | postgres | DEALLOCATE pdo_stmt_0004506                              | ERROR       | 26000       | prepared statement "pdo_stmt_0004506" does not exist
+  2021-12-30 01:56:01.761941+03 |     10 | postgres | 12405 | postgres | SELECT n FROM t12                                        | ERROR       | 42P01       | relation "t12" does not exist
+  2021-12-30 01:56:01.766596+03 |     10 | postgres | 12405 | postgres | DEALLOCATE pdo_stmt_0007907                              | ERROR       | 26000       | prepared statement "pdo_stmt_0007907" does not exist
+  2021-12-30 01:56:01.770606+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (1059, '20211139')        | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.775133+03 |     10 | postgres | 12405 | postgres | DEALLOCATE pdo_stmt_0002629                              | ERROR       | 26000       | prepared statement "pdo_stmt_0002629" does not exist
+  2021-12-30 01:56:01.797044+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (4313, '20211134')        | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.802632+03 |     10 | postgres | 12405 | postgres | DEALLOCATE pdo_stmt_0004717                              | ERROR       | 26000       | prepared statement "pdo_stmt_0004717" does not exist
+  2021-12-30 01:56:01.817525+03 |     10 | postgres | 12405 | postgres | SELECT p12 from t1                                       | ERROR       | 42703       | column "p12" does not exist
+  2021-12-30 01:56:01.862882+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (2300, '20211139')        | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.868913+03 |     10 | postgres | 12405 | postgres | SELECT p8 from t1                                        | ERROR       | 42703       | column "p8" does not exist
+  2021-12-30 01:56:01.874875+03 |     10 | postgres | 12405 | postgres | INSERT INTO t1 VALUES ('test6')                          | ERROR       | 22P02       | invalid input syntax for integer: "test6"
+  2021-12-30 01:56:01.880706+03 |     10 | postgres | 12405 | postgres | DEALLOCATE pdo_stmt_0001192                              | ERROR       | 26000       | prepared statement "pdo_stmt_0001192" does not exist
+  2021-12-30 01:56:01.884662+03 |     10 | postgres | 12405 | postgres | DEALLOCATE pdo_stmt_0001891                              | ERROR       | 26000       | prepared statement "pdo_stmt_0001891" does not exist
+  2021-12-30 01:56:01.890292+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (269, current_timestamp)  | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.894653+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (88, current_timestamp)   | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.899105+03 |     10 | postgres | 12405 | postgres | CREATE TABLE t3 (n int)                                  | ERROR       | 42P07       | relation "t3" already exists
+  2021-12-30 01:56:01.903823+03 |     10 | postgres | 12405 | postgres | CREATE TABLE t1 (n int)                                  | ERROR       | 42P07       | relation "t1" already exists
+  2021-12-30 01:56:01.926328+03 |     10 | postgres | 12405 | postgres | INSERT INTO t2 (p, dat) VALUES (1899, current_timestamp) | ERROR       | 42703       | column "p" of relation "t2" does not exist
+  2021-12-30 01:56:01.932826+03 |     10 | postgres | 12405 | postgres | INSERT INTO t1 VALUES ('test11')                         | ERROR       | 22P02       | invalid input syntax for integer: "test11"
+ (20 rows)
+
 
 
 Compatibility
