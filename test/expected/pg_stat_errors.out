@@ -219,12 +219,14 @@ SELECT usename, datname, error_level, error_class, error_state, errors FROM dba_
  postgres | contrib_regression | ERROR       | 22          | 22008       |      1
  postgres | contrib_regression | ERROR       | 22          | 22P02       |      1
  postgres | contrib_regression | ERROR       | 23          | 23503       |      1
+ postgres | contrib_regression | ERROR       | 23          | 23505       |     15
  postgres | contrib_regression | ERROR       | 26          | 26000       |      1
+ postgres | contrib_regression | ERROR       | 42          | 42601       |      1
  postgres | contrib_regression | ERROR       | 42          | 42703       |      1
  postgres | contrib_regression | ERROR       | 42          | 42P01       |      1
  postgres | contrib_regression | ERROR       | 42          | 42P07       |      1
  postgres | contrib_regression | ERROR       | P0          | P0001       |      1
-(9 rows)
+(11 rows)
 
 SELECT pg_stat_errors_total_errors();
  pg_stat_errors_total_errors 
@@ -235,7 +237,7 @@ SELECT pg_stat_errors_total_errors();
 SELECT dealloc FROM pg_stat_errors_info;
  dealloc 
 ---------
-       1
+       0
 (1 row)
 
 DROP TABLE t2;
