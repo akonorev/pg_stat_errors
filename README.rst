@@ -1,8 +1,8 @@
 pg_stat_errors
 ==============
 
-Gathers statistics of errors. It can be used for monitoring systems like grafana,
-zabbix and any other. 
+The extension gathers statistics of the error types and also shows a few last errors as is.
+It can be used in monitoring systems like grafana, zabbix or any other.
 
 Installation
 ------------
@@ -10,8 +10,9 @@ Installation
 Compiling
 ~~~~~~~~~
 
-The module can be built using the standard PGXS infrastructure. For this to work, the 
-``pg_config`` program must be available in your $PATH. Instruction to install follows::
+The module can be built using the standard PGXS infrastructure. For this to work, 
+the ``pg_config`` program must be available in your $PATH. Follow the installation
+instruction below:::
 
  git clone https://github.com/akonorev/pg_stat_errors.git
  cd pg_stat_errors
@@ -21,157 +22,177 @@ The module can be built using the standard PGXS infrastructure. For this to work
 PostgreSQL setup
 ~~~~~~~~~~~~~~~~
 
-The extension is now available. But, as it requires some shared memory to hold its 
-counters, the module must be loaded at PostgreSQL startup. Thus, you must add the 
-module to ``shared_preload_libraries`` in your ``postgresql.conf``. You need a server 
-restart to take the change into account.
+The extension is now available. However, as it requires some shared memory to hold 
+its counters, the module must be loaded at PostgreSQL startup. Thus, you must add 
+the module to ``shared_preload_libraries`` in your ``postgresql.conf``. You need 
+a server restart to take the change into account.
 
-Add the following parameters into you ``postgresql.conf``::
+Add the following parameters into your ``postgresql.conf``::
 
  # postgresql.conf
  shared_preload_libraries = 'pg_stat_errors'
 
-Once your PostgreSQL cluster is restarted, you can install the extension in every 
-database where you need to access the statistics::
+Once your PostgreSQL cluster is restarted, you can install the extension in each
+database where you need access to the statistics::
 
  mydb=# CREATE EXTENSION pg_stat_errors;
 
 Configuration
 -------------
 
-The following GUCs can be configured, in ``postgresql.conf``:
+The following GUCs can be configured in ``postgresql.conf``:
 
-- *pg_stat_errors.max* (int, default 100): is the maximum number of errors tracked by
-  the module (i.e., the maximum number of rows in the ``pg_stat_errors`` view). If more 
-  distinct errors than that are observed, information about the most oldest errors is 
-  discarded. The number of times such information was discarded can be seen in the 
-  ``pg_stat_errors_info`` view. The default value is 100. This parameter can only be set 
-  at server start.
-- *pg_stat_errors.max_last* (int, default 20): is the maximum number of last errors
-  tracked by the module (i.e., the maximum number of rows in the ``pg_stat_errors_last``
-  view). The default value is 20. This parameter can only be set at server start.
-- *pg_stat_errors.save* (bool, default on): specifies whether to save errors statistics 
-  across server shutdowns. If it is off then statistics are not saved at shutdown nor 
-  reloaded at server start. The default value is on. This parameter can only be set in 
-  the ``postgresql.conf`` file or on the server command line.
+- **pg_stat_errors.max** (int, default ``100``) 
+  
+  ``pg_stat_errors.max`` is the maximum number of the error types tracked by the 
+  module (i.e., the maximum number of rows in the ``pg_stat_errors`` view). If the 
+  number of observed error types exceeds the pre-set number then the information 
+  about the oldest error types is discarded. The number of times such information 
+  was discarded can be seen in the ``pg_stat_errors_info`` view. This parameter 
+  can only be set at the server start.
+
+- **pg_stat_errors.max_last** (int, default ``20``) 
+  
+  ``pg_stat_errors.max_last`` is the maximum number of last errors tracked by the 
+  module (i.e., the maximum number of rows in the ``pg_stat_errors_last`` view). 
+  This parameter can only be set at the server start.
+
+- **pg_stat_errors.save** (bool, default ``on``) 
+  
+  ``pg_stat_errors.save`` specifies whether to save the error statistics across the 
+  server shutdowns. If the value is ``off`` then statistics are not saved at the 
+  shutdown nor reloaded at the server start. This parameter can only be set in the 
+  ``postgresql.conf`` file or in the server command line.
+
 
 Usage
 -----
 
-pg_stat_errors create several objects.
+``pg_stat_errors`` creates several objects.
 
-pg_stat_errors view
-~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors`` view
+~~~~~~~~~~~~~~~~~~~~~~~
 
-Statistics of errors, grouped by database, username and error code. This view contains 
-up to ``pg_stat_errors.max`` rows. If there are more errors, the oldest records will be 
-deleted and increase dealloc field on the ``pg_stat_errors_info``. 
+displays the error statistics grouped by database ID, user ID and the error code. This view
+contains up to ``pg_stat_errors.max`` number of rows. The oldest records will be deallocated
+and the ``dealloc`` field in the ``pg_stat_errors_info`` will be respectively increased if 
+more error types are observed.
 
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Name      | Type                     | Description                                                                                                                                          |
-+===========+==========================+======================================================================================================================================================+
-| userid    | oid                      | OID of user who error                                                                                                                                |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| dbid      | oid                      | OID of database in which the error was occured                                                                                                       |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| elevel    | bigint                   | Error level (internal code). To represent in human readable form, use the function pg_stat_errors_glevel                                             |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| eclass    | bigint                   | Class of error (internal code). To represent class code in human readable form, use the functions pg_stat_errors_gcode, pg_stat_errors_gmessage      |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| ecode     | bigint                   | Code of error state (internal code). To represent error code in human readable form, use the functions pg_stat_errors_gcode, pg_stat_errors_gmessage |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| errors    | bigint                   | Number of errors                                                                                                                                     |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| last_time | timestamp with time zone | Time when the last error was occurred                                                                                                                |
-+-----------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
++-----------+----------------+-------------------------------------------------------------------------+
+| Name      | Type           | Description                                                             |
++===========+================+=========================================================================+
+| userid    | oid            | User OID                                                                |
++-----------+----------------+-------------------------------------------------------------------------+
+| dbid      | oid            | Database OID                                                            |
++-----------+----------------+-------------------------------------------------------------------------+
+| elevel    | bigint         | Error level (internal code). To display it in a human-readable form,    |
+|           |                | use the function ``pg_stat_errors_glevel``                              |
++-----------+----------------+-------------------------------------------------------------------------+
+| eclass    | bigint         | Error class (internal code). To display it in a human-readable form,    |
+|           |                | use the functions ``pg_stat_errors_gcode``, ``pg_stat_errors_gmessage`` |
++-----------+----------------+-------------------------------------------------------------------------+
+| ecode     | bigint         | Error state (internal code). To display it in a human-readable form,    |
+|           |                | use the functions ``pg_stat_errors_gcode``, ``pg_stat_errors_gmessage`` |
++-----------+----------------+-------------------------------------------------------------------------+
+| errors    | bigint         | Number of errors                                                        |
++-----------+----------------+-------------------------------------------------------------------------+
+| last_time | timestamp with | Time when the last error occurred                                       |
+|           | time zone      |                                                                         |
++-----------+----------------+-------------------------------------------------------------------------+
 
-dba_stat_errors view
-~~~~~~~~~~~~~~~~~~~~
-
-The same as a pg_stat_errors, but more human readable.
-
-+---------------------+--------------------------+---------------------------------------------------+
-| Name                | Type                     | Description                                       |
-+=====================+==========================+===================================================+
-| userid              | oid                      | OID of user who error                             |
-+---------------------+--------------------------+---------------------------------------------------+
-| usename             | name                     | Name of the user                                  |
-+---------------------+--------------------------+---------------------------------------------------+
-| dbid                | oid                      | OID of database in which the error was occured    |
-+---------------------+--------------------------+---------------------------------------------------+
-| datname             | name                     | Name of the database                              |
-+---------------------+--------------------------+---------------------------------------------------+
-| error_level         | text                     | The error level (WARNING, ERROR, FATAL, PANIC)    |
-+---------------------+--------------------------+---------------------------------------------------+
-| error_class         | text                     | Class of error as a two-character code            |
-+---------------------+--------------------------+---------------------------------------------------+
-| error_class_message | text                     | Message of error class                            |
-+---------------------+--------------------------+---------------------------------------------------+
-| error_state         | text                     | Error state as a five-character code              |
-+---------------------+--------------------------+---------------------------------------------------+
-| error_state_message | text                     | The error message                                 |
-+---------------------+--------------------------+---------------------------------------------------+
-| errors              | bigint                   | Number of errors                                  |
-+---------------------+--------------------------+---------------------------------------------------+
-| last_time           | timestamp with time zone | Time when the last error was occurred             |
-+---------------------+--------------------------+---------------------------------------------------+
-
-pg_stat_errors_last view
+``dba_stat_errors`` view
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-List of last errors. This view contains up to ``pg_stat_errors.max_last`` rows.
+displays the same info as ``pg_stat_errors`` but in a human-readable form.
 
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Name          | Type                     | Description                                                                                                                                          |
-+===============+==========================+======================================================================================================================================================+
-| error_time    | timestamp with time zone | Time of error                                                                                                                                        |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| userid        | oid                      | OID of user who error                                                                                                                                |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| dbid          | oid                      | OID of database in which the error was occured                                                                                                       |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| query         | text                     | Text of query                                                                                                                                        |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| elevel        | bigint                   | Error level (internal code). To represent in human readable form, use the function pg_stat_errors_glevel                                             |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| ecode         | bigint                   | Code of error state (internal code). To represent error code in human readable form, use the functions pg_stat_errors_gcode, pg_stat_errors_gmessage |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
-| error_message | text                     | The error message                                                                                                                                    |
-+---------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------+
++---------------------+----------------+---------------------------------------------------+
+| Name                | Type           | Description                                       |
++=====================+================+===================================================+
+| userid              | oid            | User OID                                          |
++---------------------+----------------+---------------------------------------------------+
+| usename             | name           | User name                                         |
++---------------------+----------------+---------------------------------------------------+
+| dbid                | oid            | Database OID                                      |
++---------------------+----------------+---------------------------------------------------+
+| datname             | name           | Database name                                     |
++---------------------+----------------+---------------------------------------------------+
+| error_level         | text           | Error level (WARNING, ERROR, FATAL and PANIC)     |
++---------------------+----------------+---------------------------------------------------+
+| error_class         | text           | Error class as a two-character code               |
++---------------------+----------------+---------------------------------------------------+
+| error_class_message | text           | Message of the error class                        |
++---------------------+----------------+---------------------------------------------------+
+| error_state         | text           | Error state as a five-character code              |
++---------------------+----------------+---------------------------------------------------+
+| error_state_message | text           | Error message                                     |
++---------------------+----------------+---------------------------------------------------+
+| errors              | bigint         | Number of errors                                  |
++---------------------+----------------+---------------------------------------------------+
+| last_time           | timestamp with | Time when the last error occurred                 |
+|                     | time zone      |                                                   |
++---------------------+----------------+---------------------------------------------------+
+
+``pg_stat_errors_last`` view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+displays the last errors that occured in the database. This view contains up to
+``pg_stat_errors.max_last`` rows.
+
++---------------+----------------+-------------------------------------------------------------------------+
+| Name          | Type           | Description                                                             |
++===============+================+=========================================================================+
+| error_time    | timestamp with | Time of occurrence of the error                                         |
+|               | time zone      |                                                                         |
++---------------+----------------+-------------------------------------------------------------------------+
+| userid        | oid            | User OID                                                                |
++---------------+----------------+-------------------------------------------------------------------------+
+| dbid          | oid            | Database OID                                                            |
++---------------+----------------+-------------------------------------------------------------------------+
+| query         | text           | Text of the query                                                       |
++---------------+----------------+-------------------------------------------------------------------------+
+| elevel        | bigint         | Error level (internal code). To display it in a human-readable form,    |
+|               |                | use the function ``pg_stat_errors_glevel``                              |
++---------------+----------------+-------------------------------------------------------------------------+
+| ecode         | bigint         | Error state (internal code). To display it in a human-readable form,    |
+|               |                | use the functions ``pg_stat_errors_gcode``, ``pg_stat_errors_gmessage`` |
++---------------+----------------+-------------------------------------------------------------------------+
+| error_message | text           | Error message                                                           |
++---------------+----------------+-------------------------------------------------------------------------+
 
 
-dba_stat_errors_last view
-~~~~~~~~~~~~~~~~~~~~~~~~~
+``dba_stat_errors_last`` view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The same as a pg_stat_errors_last, but more human readable.
+displays the same info as ``pg_stat_errors_last`` but in a human-readable form.
 
-+---------------+--------------------------+---------------------------------------------------+
-| Name          | Type                     | Description                                       |
-+===============+==========================+===================================================+
-| error_time    | timestamp with time zone | Time of error                                     |
-+---------------+--------------------------+---------------------------------------------------+
-| userid        | oid                      | OID of user who error                             |
-+---------------+--------------------------+---------------------------------------------------+
-| usename       | name                     | Name of the user                                  |
-+---------------+--------------------------+---------------------------------------------------+
-| dbid          | oid                      | OID of database in which the error was occured    |
-+---------------+--------------------------+---------------------------------------------------+
-| datname       | name                     | Name of the database                              |
-+---------------+--------------------------+---------------------------------------------------+
-| query         | text                     | Text of query                                     |
-+---------------+--------------------------+---------------------------------------------------+
-| error_level   | text                     | The error level (WARNING, ERROR, FATAL, PANIC)    |
-+---------------+--------------------------+---------------------------------------------------+
-| error_state   | text                     | Error state as a five-character code              |
-+---------------+--------------------------+---------------------------------------------------+
-| error_message | text                     | The error message                                 |
-+---------------+--------------------------+---------------------------------------------------+
++---------------+----------------+-------------------------------------------------------+
+| Name          | Type           | Description                                           |
++===============+================+=======================================================+
+| error_time    | timestamp with | Time of occurrence of the error                       |
+|               | time zone      |                                                       |
++---------------+----------------+-------------------------------------------------------+
+| userid        | oid            | User OID                                              |
++---------------+----------------+-------------------------------------------------------+
+| usename       | name           | User name                                             |
++---------------+----------------+-------------------------------------------------------+
+| dbid          | oid            | Database OID                                          |
++---------------+----------------+-------------------------------------------------------+
+| datname       | name           | Database name                                         |
++---------------+----------------+-------------------------------------------------------+
+| query         | text           | Text of the query                                     |
++---------------+----------------+-------------------------------------------------------+
+| error_level   | text           | Error level (WARNING, ERROR, FATAL and PANIC)         |
++---------------+----------------+-------------------------------------------------------+
+| error_state   | text           | Error state as a five-character code                  |
++---------------+----------------+-------------------------------------------------------+
+| error_message | text           | Error message                                         |
++---------------+----------------+-------------------------------------------------------+
 
 
-pg_stat_errors_total_errors view and function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors_total_errors`` view and function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Total errors. One row, one column.::
+These objects display total number of errors. They contain only a single row and a single column::
 
  postgres=# select * from pg_stat_errors_total_errors ;
   pg_stat_errors_total_errors 
@@ -186,33 +207,38 @@ Total errors. One row, one column.::
  (1 row)
 
 
-pg_stat_errors_info view
-~~~~~~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors_info`` view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The statistics of the ``pg_stat_errors`` module itself are tracked and made available via
-a view named ``pg_stat_errors_info``. This view contains only a single row.
+The statistics of the ``pg_stat_errors`` module itself are tracked and can be viewed in
+``pg_stat_errors_info``. This view contains only a single row.
 
-+----------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Name           | Type                     | Description                                                                                                                                                |
-+================+==========================+============================================================================================================================================================+
-| dealloc        | bigint                   | Total number of times pg_stat_errors entries about the oldest errors were deallocated because more distinct errors than pg_stat_errors.max were observed   |
-+----------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| stats_reset    | timestamp with time zone | Time at which all statistics in the pg_stat_errors view were last reset.                                                                                   |
-+----------------+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------+
++----------------+----------------+---------------------------------------------------------+
+| Name           | Type           | Description                                             |
++================+================+=========================================================+
+| dealloc        | bigint         | Total number of deallocations of the ``pg_stat_errors`` |
+|                |                | entries containing info about the oldest errors.        |
+|                |                | Deallocations happen if the number of observed error    |
+|                |                | types exceeds ``pg_stat_error.max`` value.              |
++----------------+----------------+---------------------------------------------------------+
+| stats_reset    | timestamp with | Time of the last reset of all statistics                |
+|                | time zone      |                                                         |
++----------------+----------------+---------------------------------------------------------+
 
 
-pg_stat_errors_reset() function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors_reset()`` function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Resets the statistics gathered by pg_stat_errors. Can be called by superusers.::
+resets the statistics gathered by ``pg_stat_errors``. Can be called by superusers::
 
  SELECT pg_stat_errors_reset();
 
 
-pg_stat_errors_glevel(int) function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors_glevel(int)`` function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Returns human readable representation of error level as string. Possible values are: WARNING, ERROR, FATAL, PANIC only.::
+returns a human-readable representation of the error level as text. Valid values are;
+WARNING, ERROR, FATAL and PANIC only::
 
  postgres=# SELECT dbid, userid, elevel, pg_stat_errors_glevel(elevel) AS level_msg 
  postgres-#   FROM pg_stat_errors;
@@ -227,10 +253,10 @@ Returns human readable representation of error level as string. Possible values 
   13237 |     10 |     20 | ERROR
   13237 |     10 |     20 | ERROR
 
-pg_stat_errors_gcode(int) function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors_gcode(int)`` function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Returns five-character representation of error class or error state.::
+returns the error class or the error state as a five-character value::
 
  postgres=# SELECT dbid, userid, eclass, pg_stat_errors_gcode(eclass) AS eclass_code,
  postgres-#     ecode, pg_stat_errors_gcode(ecode) AS ecode_code FROM pg_stat_errors;
@@ -245,10 +271,10 @@ Returns five-character representation of error class or error state.::
   13237 |     10 |    132 | 42000       |  52461700 | 42883
   13237 |     10 |    132 | 42000       |  33583236 | 42702
 
-pg_stat_errors_gmessage(int) function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``pg_stat_errors_gmessage(int)`` function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Returns message of error class or error code.::
+returns the message of the error class or the error code::
 
  postgres=# SELECT dbid, userid, eclass, pg_stat_errors_gmessage(eclass) AS eclass_msg,
  postgres-#     ecode, pg_stat_errors_gmessage(ecode) AS ecode_msg FROM pg_stat_errors;
@@ -350,12 +376,16 @@ Examples
   2021-12-30 01:56:01.932826+03 |     10 | postgres | 12405 | postgres | INSERT INTO t1 VALUES ('test11')                         | ERROR       | 22P02       | invalid input syntax for integer: "test11"
  (20 rows)
 
+Dashboard
+~~~~~~~~~
+
+.. image:: doc/grafana1.png
 
 
 Compatibility
 -------------
 
-pg_stat_errors is compatible with the PostgreSQL 9.4, 9.5, 9.6, 10, 11, 12, 13 and 14 releases.
+``pg_stat_errors`` is compatible with the PostgreSQL 9.4, 9.5, 9.6, 10, 11, 12, 13 and 14 releases.
 
 Authors
 -------
@@ -365,7 +395,7 @@ Alexey Konorev <alexey.konorev@gmail.com>
 License
 -------
 
-pg_stat_errors is free software distributed under the PostgreSQL license.
+``pg_stat_errors`` is free software distributed under the PostgreSQL license.
 
 Copyright (c) 2021, Alexey E. Konorev
 
