@@ -42,7 +42,7 @@ Configuration
 
 The following GUCs can be configured in ``postgresql.conf``:
 
-- **pg_stat_errors.max** (int, default ``100``) 
+- *pg_stat_errors.max* (int, default ``100``)
   
   ``pg_stat_errors.max`` is the maximum number of the error types tracked by the 
   module (i.e., the maximum number of rows in the ``pg_stat_errors`` view). If the 
@@ -51,13 +51,13 @@ The following GUCs can be configured in ``postgresql.conf``:
   was discarded can be seen in the ``pg_stat_errors_info`` view. This parameter 
   can only be set at the server start.
 
-- **pg_stat_errors.max_last** (int, default ``20``) 
+- *pg_stat_errors.max_last* (int, default ``20``)
   
   ``pg_stat_errors.max_last`` is the maximum number of last errors tracked by the 
   module (i.e., the maximum number of rows in the ``pg_stat_errors_last`` view). 
   This parameter can only be set at the server start.
 
-- **pg_stat_errors.save** (bool, default ``on``) 
+- *pg_stat_errors.save* (bool, default ``on``)
   
   ``pg_stat_errors.save`` specifies whether to save the error statistics across the 
   server shutdowns. If the value is ``off`` then statistics are not saved at the 
@@ -70,8 +70,8 @@ Usage
 
 ``pg_stat_errors`` creates several objects.
 
-``pg_stat_errors`` view
-~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors view
+~~~~~~~~~~~~~~~~~~~
 
 displays the error statistics grouped by database ID, user ID and the error code. This view
 contains up to ``pg_stat_errors.max`` number of rows. The oldest records will be deallocated
@@ -100,8 +100,8 @@ more error types are observed.
 |           | time zone      |                                                                         |
 +-----------+----------------+-------------------------------------------------------------------------+
 
-``dba_stat_errors`` view
-~~~~~~~~~~~~~~~~~~~~~~~~
+dba_stat_errors view
+~~~~~~~~~~~~~~~~~~~~
 
 displays the same info as ``pg_stat_errors`` but in a human-readable form.
 
@@ -132,8 +132,8 @@ displays the same info as ``pg_stat_errors`` but in a human-readable form.
 |                     | time zone      |                                                   |
 +---------------------+----------------+---------------------------------------------------+
 
-``pg_stat_errors_last`` view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_last view
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 displays the last errors that occured in the database. This view contains up to
 ``pg_stat_errors.max_last`` rows.
@@ -160,8 +160,8 @@ displays the last errors that occured in the database. This view contains up to
 +---------------+----------------+-------------------------------------------------------------------------+
 
 
-``dba_stat_errors_last`` view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+dba_stat_errors_last view
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 displays the same info as ``pg_stat_errors_last`` but in a human-readable form.
 
@@ -189,8 +189,8 @@ displays the same info as ``pg_stat_errors_last`` but in a human-readable form.
 +---------------+----------------+-------------------------------------------------------+
 
 
-``pg_stat_errors_total_errors`` view and function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_total_errors view and function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 These objects display total number of errors. They contain only a single row and a single column::
 
@@ -207,8 +207,8 @@ These objects display total number of errors. They contain only a single row and
  (1 row)
 
 
-``pg_stat_errors_info`` view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_info view
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 The statistics of the ``pg_stat_errors`` module itself are tracked and can be viewed in
 ``pg_stat_errors_info``. This view contains only a single row.
@@ -226,16 +226,16 @@ The statistics of the ``pg_stat_errors`` module itself are tracked and can be vi
 +----------------+----------------+---------------------------------------------------------+
 
 
-``pg_stat_errors_reset()`` function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_reset() function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 resets the statistics gathered by ``pg_stat_errors``. Can be called by superusers::
 
  SELECT pg_stat_errors_reset();
 
 
-``pg_stat_errors_glevel(int)`` function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_glevel(int) function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 returns a human-readable representation of the error level as text. Valid values are;
 WARNING, ERROR, FATAL and PANIC only::
@@ -253,8 +253,8 @@ WARNING, ERROR, FATAL and PANIC only::
   13237 |     10 |     20 | ERROR
   13237 |     10 |     20 | ERROR
 
-``pg_stat_errors_gcode(int)`` function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_gcode(int) function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 returns the error class or the error state as a five-character value::
 
@@ -271,8 +271,8 @@ returns the error class or the error state as a five-character value::
   13237 |     10 |    132 | 42000       |  52461700 | 42883
   13237 |     10 |    132 | 42000       |  33583236 | 42702
 
-``pg_stat_errors_gmessage(int)`` function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pg_stat_errors_gmessage(int) function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 returns the message of the error class or the error code::
 
