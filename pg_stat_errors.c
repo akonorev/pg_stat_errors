@@ -1035,13 +1035,13 @@ pg_stat_errors_gmessage(PG_FUNCTION_ARGS)
 
 /*
  * Get error level as text
- * only WARNING, ERROR, FATAL, PANIC error level codes
+ * only WARNING, ERROR, FATAL, PANIC error level codes are allowed
  */
 Datum
 pg_stat_errors_glevel(PG_FUNCTION_ARGS)
 {
 	int     elevel = PG_GETARG_INT64(0);
-	char    *elevel_text = NULL;
+	char    *elevel_text = "";
 
 	switch (elevel)
 	{
@@ -1057,6 +1057,8 @@ pg_stat_errors_glevel(PG_FUNCTION_ARGS)
 		case PANIC:
 			elevel_text = "PANIC";
 			break;
+		default:
+			elog(ERROR, "pg_stat_errors: %s(): incorrect error level code. [%d]", __FUNCTION__, elevel);
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(elevel_text));
