@@ -1,5 +1,6 @@
 #!/bin/bash
 #
+# v0.0.1
 
 # defaults
 #
@@ -47,6 +48,7 @@ help_usage()
     echo -e "  Options:"
     echo -e "    -i, --init                 invokes initialization mode"
     echo -e "    -c, --count NUM            count of generate errors (with sleeps)"
+    echo -e "    -T, --time NUM             duration of error generation in seconds"
     echo -e "    -t, --types NUM            count of error types generating. after 11, the type is sleep"
     echo -e "    -d, --debug                print debugging output"
     echo -e "    -D, --dbnames DBNAMES      list of database names comma separated without spaces"
@@ -62,7 +64,7 @@ info()
     echo "users:     [${#list_user[@]}]:${list_user[*]}"
     echo "datnames:  [${#list_dat[@]}]:${list_dat[*]}"
     echo "types:     $TYPES"
-    echo "count:     $CNT"
+    echo "duration:  $en ($meth)"
     echo ""
 }
 
@@ -92,6 +94,11 @@ do
             shift
 	    shift
             ;;
+	-T|--time)
+	    DUR=$2
+	    shift
+	    shift
+	    ;;
         -U|--usernames)
             IFS="," read -a list_user <<< "$2"
 	    shift
@@ -113,12 +120,25 @@ do
     esac
 done
 
+if (( "$DUR" )); then
+    meth="time-based"
+    en=$DUR
+else
+    meth="count-based"
+    en=$CNT
+fi
+
 
 info
 
 
-for ((i=1;i<=$CNT;i++))
+st=0
+i=0
+while (( st < en ))
 do
+    (( DUR?(( st=$SECONDS )):(( st++ )) ))
+    (( i++ )) # counter
+
     # get command type (1..TYPE). type 1..11 is errors.
     # type is 1..11 - only errors stream without sleeps
     # type is 12 and above - sleeps

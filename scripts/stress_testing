@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+
+CNT=10000
+
+for ((i=1;i<=$CNT;i++))
+do
+  ./gen-errors -t 12 -T 2592000 >/dev/null 2>&1 &
+done
+
