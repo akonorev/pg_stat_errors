@@ -48,6 +48,7 @@ static const uint32 PGSE_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 #define SQLSTATE_LEN              20
 #define ERROR_MESSAGE_LEN        160
 #define MAX_QUERY_LEN           1024
+#define MAX_LAST_ERRORS          100
 
 
 /*
@@ -248,7 +249,7 @@ _PG_init(void)
 	                        &pgse_max_last,
 	                        20,
 	                        10,
-	                        INT_MAX,
+	                        MAX_LAST_ERRORS,
 	                        PGC_POSTMASTER,
 	                        0,
 	                        NULL,
@@ -504,7 +505,7 @@ pgse_shmem_shutdown(int code, Datum arg)
 	FILE             *file;
 	HASH_SEQ_STATUS  hash_seq;
 	int32            num_entries;
-	int32            j, num_last, rbuf_indx;
+	uint32           j, num_last, rbuf_indx;
 	pgseEntry        *entry;
 
 	/* Don't try to dump during a crash. */
@@ -551,7 +552,7 @@ pgse_shmem_shutdown(int code, Datum arg)
 
 	/* save last errors */
 	num_last = pgse->eid.max_eid;
-	if (fwrite(&num_last, sizeof(int32), 1, file) != 1)
+	if (fwrite(&num_last, sizeof(uint32), 1, file) != 1)
 		goto error;
 
 	/* store the latest errors in the order of occurrence */
@@ -841,6 +842,47 @@ pg_stat_errors_reset(PG_FUNCTION_ARGS)
 
 
 /*
+ * Get the next EID
+ *
+ * Caller must hold an exclusive lock on pgse->lock
+ */
+static uint32
+get_next_eid(void)
+{
+	pgseEntryError *last_entry;
+	uint32 result;
+
+	/* volatile block */
+	{
+		volatile pgseSharedState *s = (volatile pgseSharedState *) pgse;
+
+		SpinLockAcquire(&s->mutex);
+
+		s->eid.curr_eid = s->eid.next_eid;
+		s->eid.next_eid++;
+
+		if (s->eid.next_eid >= pgse_max_last)
+			s->eid.next_eid = 0;
+
+		if (s->eid.max_eid < pgse_max_last)
+		{
+			s->eid.max_eid++;
+
+			/* Allocate the entry of the last errors. Only once */
+			last_entry = (pgseEntryError *) &pgse_errors[s->eid.curr_eid];
+			SpinLockInit(&last_entry->mutex);
+		}
+
+		result = s->eid.curr_eid;
+
+		SpinLockRelease(&s->mutex);
+	}
+
+	return result;
+}
+
+
+/*
  * Store last errors
  *
  * Caller must hold an exclusive lock on pgse->lock.
@@ -848,25 +890,18 @@ pg_stat_errors_reset(PG_FUNCTION_ARGS)
 static void
 pgse_store_error(const TimestampTz etm, const Oid dbid, const Oid userid, const char *query, const ErrorData *edata)
 {
-	pgse->eid.curr_eid = pgse->eid.next_eid;
-	pgse->eid.next_eid++;
-
-	if (pgse->eid.next_eid >= pgse_max_last)
-		pgse->eid.next_eid = 0;
-
-	if (pgse->eid.max_eid < pgse_max_last)
-		pgse->eid.max_eid++;
+	uint32 c_eid = get_next_eid();
 
 	/* volatile block */
 	{
 		int message_len = strlen (edata->message);
 		int query_len = strlen (query);
-		volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[pgse->eid.curr_eid];
+		volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[c_eid];
 
 		SpinLockAcquire(&e->mutex);
 
 		/* reset old error */
-		memset(&pgse_errors[pgse->eid.curr_eid].error, 0, sizeof(ErrorInfo));
+		memset(&pgse_errors[c_eid].error, 0, sizeof(ErrorInfo));
 
 		e->error.etime = etm;
 		e->error.userid = userid;
@@ -883,23 +918,16 @@ pgse_store_error(const TimestampTz etm, const Oid dbid, const Oid userid, const 
 static void
 pgse_store_errorinfo(const ErrorInfo *eInfo)
 {
-	pgse->eid.curr_eid = pgse->eid.next_eid;
-	pgse->eid.next_eid++;
-
-	if (pgse->eid.next_eid >= pgse_max_last)
-		pgse->eid.next_eid = 0;
-
-	if (pgse->eid.max_eid < pgse_max_last)
-		pgse->eid.max_eid++;
+	uint32 c_eid = get_next_eid();
 
 	/* volatile block */
 	{
-		volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[pgse->eid.curr_eid];
+		volatile pgseEntryError *e = (volatile pgseEntryError *) &pgse_errors[c_eid];
 
 		SpinLockAcquire(&e->mutex);
 
 		/* reset old error */
-		memset(&pgse_errors[pgse->eid.curr_eid].error, 0, sizeof(ErrorInfo));
+		memset(&pgse_errors[c_eid].error, 0, sizeof(ErrorInfo));
 		memcpy((void *)&e->error, eInfo, sizeof(ErrorInfo));
 
 		SpinLockRelease(&e->mutex);
@@ -1057,8 +1085,9 @@ pg_stat_errors_glevel(PG_FUNCTION_ARGS)
 		case PANIC:
 			elevel_text = "PANIC";
 			break;
+		/* should never happen */
 		default:
-			elog(ERROR, "pg_stat_errors: %s(): incorrect error level code. [%d]", __FUNCTION__, elevel);
+			elog(LOG, "pg_stat_errors: %s(): incorrect error level code. [%d]", __FUNCTION__, elevel);
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(elevel_text));
