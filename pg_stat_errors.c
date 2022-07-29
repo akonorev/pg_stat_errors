@@ -318,10 +318,9 @@ pgse_shmem_startup(void)
 	HASHCTL         info;
 	FILE            *file = NULL;
 	uint32          header;
-	int32           num;
-	int32           num_last;
-	int32           pgver;
-	int32           i;
+	uint32          pgver;
+	int32           i, num;
+	uint32          j, num_last;
 
 	if (prev_shmem_startup_hook)
 		prev_shmem_startup_hook();
@@ -448,10 +447,10 @@ pgse_shmem_startup(void)
 		goto read_error;
 
 	/* load last errors */
-	if (fread(&num_last, sizeof(int32), 1, file) != 1)
+	if (fread(&num_last, sizeof(uint32), 1, file) != 1)
 		goto read_error;
 
-	for (i = 0; i < num_last; i++)
+	for (j = 0; j < num_last; j++)
 	{
 		ErrorInfo   temp;
 
