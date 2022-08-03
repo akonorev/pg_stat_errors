@@ -32,6 +32,7 @@
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 
+
 PG_MODULE_MAGIC;
 
 /* Location of permanent stats file (valid when database is shut down) */
@@ -48,7 +49,7 @@ static const uint32 PGSE_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 #define SQLSTATE_LEN              20
 #define ERROR_MESSAGE_LEN        160
 #define MAX_QUERY_LEN           1024
-#define MAX_LAST_ERRORS          100
+#define MAX_LAST_ERRORS         1000
 
 
 /*
@@ -189,9 +190,6 @@ PG_FUNCTION_INFO_V1(pg_stat_errors_reset);
 PG_FUNCTION_INFO_V1(pg_stat_errors);
 PG_FUNCTION_INFO_V1(pg_stat_errors_total_errors);
 PG_FUNCTION_INFO_V1(pg_stat_errors_info);
-PG_FUNCTION_INFO_V1(pg_stat_errors_glevel);
-PG_FUNCTION_INFO_V1(pg_stat_errors_gcode);
-PG_FUNCTION_INFO_V1(pg_stat_errors_gmessage);
 PG_FUNCTION_INFO_V1(pg_stat_errors_last);
 
 static void pgse_shmem_startup(void);
@@ -1039,15 +1037,6 @@ get_code_as_text(int ecode)
 	return ecode_text;
 }
 
-Datum
-pg_stat_errors_gcode(PG_FUNCTION_ARGS)
-{
-	int     ecode = PG_GETARG_INT64(0);
-
-	PG_RETURN_TEXT_P(cstring_to_text(get_code_as_text(ecode)));
-}
-
-
 /*
  * Get error message
  */
@@ -1066,18 +1055,9 @@ get_message_by_code(int ecode)
 	return result;
 }
 
-Datum
-pg_stat_errors_gmessage(PG_FUNCTION_ARGS)
-{
-	int     ecode = PG_GETARG_INT64(0);
-
-	PG_RETURN_TEXT_P(cstring_to_text(get_message_by_code(ecode)));
-}
-
-
 /*
  * Get error level as text
- * only WARNING, ERROR, FATAL, PANIC error level codes are allowed
+ * WARNING, ERROR, FATAL, PANIC error level codes are allowed
  */
 static char *
 get_level_as_text(int elevel)
@@ -1104,14 +1084,6 @@ get_level_as_text(int elevel)
 	}
 
 	return elevel_text;
-}
-
-Datum
-pg_stat_errors_glevel(PG_FUNCTION_ARGS)
-{
-	int     elevel = PG_GETARG_INT64(0);
-
-	PG_RETURN_TEXT_P(cstring_to_text(get_level_as_text(elevel)));
 }
 
 
@@ -1157,7 +1129,7 @@ pg_stat_errors_info(PG_FUNCTION_ARGS)
 }
 
 
-#define PG_STAT_ERRORS_COLS	7
+#define PG_STAT_ERRORS_COLS	9
 
 /*
  * Retrieve statistics of errors per key
@@ -1224,15 +1196,31 @@ pg_stat_errors(PG_FUNCTION_ARGS)
 		bool            nulls[PG_STAT_ERRORS_COLS];
 		int             i = 0;
 		Counters        tmp;
+		int		eclass;
+		char		eclass_text[4] = {0};
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
 		values[i++] = ObjectIdGetDatum(entry->key.userid);
 		values[i++] = ObjectIdGetDatum(entry->key.dbid);
-		values[i++] = Int64GetDatumFast(entry->key.elevel);
-		values[i++] = Int64GetDatumFast(ERRCODE_TO_CATEGORY(entry->key.ecode));
-		values[i++] = Int64GetDatumFast(entry->key.ecode);
+
+		/* level */
+		values[i++] = CStringGetTextDatum(get_level_as_text(entry->key.elevel));
+
+		/* class */
+		eclass = ERRCODE_TO_CATEGORY(entry->key.ecode);
+		strncpy(eclass_text, get_code_as_text(eclass), 2);
+		values[i++] = CStringGetTextDatum(eclass_text);
+
+		/* class_message */
+		values[i++] = CStringGetTextDatum(get_message_by_code(eclass));
+
+		/* state */
+		values[i++] = CStringGetTextDatum(get_code_as_text(entry->key.ecode));
+
+		/* state_message */
+		values[i++] = CStringGetTextDatum(get_message_by_code(entry->key.ecode));
 
 		/* copy counters to a local variable to keep locking time short */
 		{
@@ -1338,9 +1326,14 @@ pg_stat_errors_last(PG_FUNCTION_ARGS)
 		values[i++] = TimestampTzGetDatum(tmp.etime);
 		values[i++] = ObjectIdGetDatum(tmp.userid);
 		values[i++] = ObjectIdGetDatum(tmp.dbid);
-		values[i++] = CStringGetTextDatum(tmp.query);
-		values[i++] = Int64GetDatumFast(tmp.elevel);
-		values[i++] = Int64GetDatumFast(tmp.ecode);
+
+		if (strlen(tmp.query) == 0)
+			nulls[i++] = true;
+		else
+			values[i++] = CStringGetTextDatum(tmp.query);
+
+		values[i++] = CStringGetTextDatum(get_level_as_text(tmp.elevel));
+		values[i++] = CStringGetTextDatum(get_code_as_text(tmp.ecode));
 		values[i++] = CStringGetTextDatum(tmp.message);
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

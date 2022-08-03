@@ -1,6 +1,6 @@
 # pg_stat_errors extension
 comment = 'statistics of errors across a whole database cluster'
-default_version = '1.1'
+default_version = '1.2'
 module_pathname = '$libdir/pg_stat_errors'
 relocatable = false
 #schema = 'stats'
