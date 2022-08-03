@@ -1,4 +1,10 @@
 
+### pg_stat_errors v1.2 (Aug 3, 2022) ###
+
+* Change columns of pg_stat_errors and pg_stat_errors_last views
+* Remove unnecessary functions pg_stat_errors_glevel, pg_stat_errors_gcode, pg_stat_errors_gmessage
+* Fix segmentation fault
+
 ### pg_stat_errors v1.1 (Dec 11, 2021) ###
 
 * Adds parameter pg_stat_errors.max_last

@@ -51,7 +51,7 @@ The following GUCs can be configured in ``postgresql.conf``:
   was discarded can be seen in the ``pg_stat_errors_info`` view. This parameter 
   can only be set at the server start.
 
-- *pg_stat_errors.max_last* (int, default ``20``)
+- *pg_stat_errors.max_last* (int, default ``20``, max ``1000``)
   
   ``pg_stat_errors.max_last`` is the maximum number of last errors tracked by the 
   module (i.e., the maximum number of rows in the ``pg_stat_errors_last`` view). 
@@ -78,27 +78,28 @@ contains up to ``pg_stat_errors.max`` number of rows. The oldest records will be
 and the ``dealloc`` field in the ``pg_stat_errors_info`` will be respectively increased if 
 more error types are observed.
 
-+-----------+----------------+-------------------------------------------------------------------------+
-| Name      | Type           | Description                                                             |
-+===========+================+=========================================================================+
-| userid    | oid            | User OID                                                                |
-+-----------+----------------+-------------------------------------------------------------------------+
-| dbid      | oid            | Database OID                                                            |
-+-----------+----------------+-------------------------------------------------------------------------+
-| elevel    | bigint         | Error level (internal code). To display it in a human-readable form,    |
-|           |                | use the function ``pg_stat_errors_glevel``                              |
-+-----------+----------------+-------------------------------------------------------------------------+
-| eclass    | bigint         | Error class (internal code). To display it in a human-readable form,    |
-|           |                | use the functions ``pg_stat_errors_gcode``, ``pg_stat_errors_gmessage`` |
-+-----------+----------------+-------------------------------------------------------------------------+
-| ecode     | bigint         | Error state (internal code). To display it in a human-readable form,    |
-|           |                | use the functions ``pg_stat_errors_gcode``, ``pg_stat_errors_gmessage`` |
-+-----------+----------------+-------------------------------------------------------------------------+
-| errors    | bigint         | Number of errors                                                        |
-+-----------+----------------+-------------------------------------------------------------------------+
-| last_time | timestamp with | Time when the last error occurred                                       |
-|           | time zone      |                                                                         |
-+-----------+----------------+-------------------------------------------------------------------------+
++---------------------+----------------+---------------------------------------------------+
+| Name                | Type           | Description                                       |
++=====================+================+===================================================+
+| userid              | oid            | User OID                                          |
++---------------------+----------------+---------------------------------------------------+
+| dbid                | oid            | Database OID                                      |
++---------------------+----------------+---------------------------------------------------+
+| error_level         | text           | Error level (WARNING, ERROR, FATAL and PANIC)     |
++---------------------+----------------+---------------------------------------------------+
+| error_class         | text           | Error class as a two-character code               |
++---------------------+----------------+---------------------------------------------------+
+| error_class_message | text           | Message of the error class                        |
++---------------------+----------------+---------------------------------------------------+
+| error_state         | text           | Error state as a five-character code              |
++---------------------+----------------+---------------------------------------------------+
+| error_state_message | text           | Error message                                     |
++---------------------+----------------+---------------------------------------------------+
+| errors              | bigint         | Number of errors                                  |
++---------------------+----------------+---------------------------------------------------+
+| last_time           | timestamp with | Time when the last error occurred                 |
+|                     | time zone      |                                                   |
++---------------------+----------------+---------------------------------------------------+
 
 dba_stat_errors view
 ~~~~~~~~~~~~~~~~~~~~
@@ -138,26 +139,24 @@ pg_stat_errors_last view
 displays the last errors that occured in the database. This view contains up to
 ``pg_stat_errors.max_last`` rows.
 
-+---------------+----------------+-------------------------------------------------------------------------+
-| Name          | Type           | Description                                                             |
-+===============+================+=========================================================================+
-| error_time    | timestamp with | Time of occurrence of the error                                         |
-|               | time zone      |                                                                         |
-+---------------+----------------+-------------------------------------------------------------------------+
-| userid        | oid            | User OID                                                                |
-+---------------+----------------+-------------------------------------------------------------------------+
-| dbid          | oid            | Database OID                                                            |
-+---------------+----------------+-------------------------------------------------------------------------+
-| query         | text           | Text of the query                                                       |
-+---------------+----------------+-------------------------------------------------------------------------+
-| elevel        | bigint         | Error level (internal code). To display it in a human-readable form,    |
-|               |                | use the function ``pg_stat_errors_glevel``                              |
-+---------------+----------------+-------------------------------------------------------------------------+
-| ecode         | bigint         | Error state (internal code). To display it in a human-readable form,    |
-|               |                | use the functions ``pg_stat_errors_gcode``, ``pg_stat_errors_gmessage`` |
-+---------------+----------------+-------------------------------------------------------------------------+
-| error_message | text           | Error message                                                           |
-+---------------+----------------+-------------------------------------------------------------------------+
++---------------+----------------+-------------------------------------------------------+
+| Name          | Type           | Description                                           |
++===============+================+=======================================================+
+| error_time    | timestamp with | Time of occurrence of the error                       |
+|               | time zone      |                                                       |
++---------------+----------------+-------------------------------------------------------+
+| userid        | oid            | User OID                                              |
++---------------+----------------+-------------------------------------------------------+
+| dbid          | oid            | Database OID                                          |
++---------------+----------------+-------------------------------------------------------+
+| query         | text           | Text of the query                                     |
++---------------+----------------+-------------------------------------------------------+
+| error_level   | text           | Error level (WARNING, ERROR, FATAL and PANIC)         |
++---------------+----------------+-------------------------------------------------------+
+| error_state   | text           | Error state as a five-character code                  |
++---------------+----------------+-------------------------------------------------------+
+| error_message | text           | Error message                                         |
++---------------+----------------+-------------------------------------------------------+
 
 
 dba_stat_errors_last view
@@ -234,91 +233,26 @@ resets the statistics gathered by ``pg_stat_errors``. Can be called by superuser
  SELECT pg_stat_errors_reset();
 
 
-pg_stat_errors_glevel(int) function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-returns a human-readable representation of the error level as text. Valid values are;
-WARNING, ERROR, FATAL and PANIC only::
-
- postgres=# SELECT dbid, userid, elevel, pg_stat_errors_glevel(elevel) AS level_msg 
- postgres-#   FROM pg_stat_errors;
-  dbid  | userid | elevel | level_msg 
- -------+--------+--------+-----------
-  16459 |  16412 |     20 | ERROR
-  13237 |     10 |     20 | ERROR
-  16459 |  16412 |     20 | ERROR
-  16459 |  16412 |     21 | FATAL
-  16459 |  16412 |     20 | ERROR
-  13237 |     10 |     20 | ERROR
-  13237 |     10 |     20 | ERROR
-  13237 |     10 |     20 | ERROR
-
-pg_stat_errors_gcode(int) function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-returns the error class or the error state as a five-character value::
-
- postgres=# SELECT dbid, userid, eclass, pg_stat_errors_gcode(eclass) AS eclass_code,
- postgres-#     ecode, pg_stat_errors_gcode(ecode) AS ecode_code FROM pg_stat_errors;
-  dbid  | userid | eclass | eclass_code |   ecode   | ecode_code 
- -------+--------+--------+-------------+-----------+------------
-  16459 |  16412 |    194 | 23000       |  50352322 | 23503
-  13237 |     10 |   1411 | 3F000       |      1411 | 3F000
-  16459 |  16412 |    132 | 42000       |  16908420 | 42P01
-  16459 |  16412 |    512 | 08000       | 100663808 | 08006
-  16459 |  16412 |    386 | 26000       |       386 | 26000
-  13237 |     10 |    132 | 42000       |  16908420 | 42P01
-  13237 |     10 |    132 | 42000       |  52461700 | 42883
-  13237 |     10 |    132 | 42000       |  33583236 | 42702
-
-pg_stat_errors_gmessage(int) function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-returns the message of the error class or the error code::
-
- postgres=# SELECT dbid, userid, eclass, pg_stat_errors_gmessage(eclass) AS eclass_msg,
- postgres-#     ecode, pg_stat_errors_gmessage(ecode) AS ecode_msg FROM pg_stat_errors;
-  dbid  | userid | eclass |              eclass_msg               |   ecode   |          ecode_msg          
- -------+--------+--------+---------------------------------------+-----------+-----------------------------
-  16459 |  16412 |    194 | integrity_constraint_violation        |  50352322 | foreign_key_violation
-  13237 |     10 |   1411 | invalid_schema_name                   |      1411 | invalid_schema_name
-  16459 |  16412 |    132 | syntax_error_or_access_rule_violation |  16908420 | undefined_table
-  16459 |  16412 |    512 | connection_exception                  | 100663808 | connection_failure
-  16459 |  16412 |    386 | invalid_sql_statement_name            |       386 | invalid_sql_statement_name
-  13237 |     10 |    132 | syntax_error_or_access_rule_violation |  16908420 | undefined_table
-  13237 |     10 |    132 | syntax_error_or_access_rule_violation |  52461700 | undefined_function
-  13237 |     10 |    132 | syntax_error_or_access_rule_violation |  33583236 | ambiguous_column
-
 Examples
 --------
+
 ::
 
- postgres=# SELECT * FROM pg_stat_errors;
-  userid | dbid  | elevel | eclass |   ecode   | errors |           last_time           
- --------+-------+--------+--------+-----------+--------+-------------------------------
-      10 | 13237 |     20 |   1154 |  16909442 |      1 | 2021-12-01 14:16:11.325831+03
-   16412 | 16459 |     20 |    194 |  50352322 |   1499 | 2021-11-12 14:15:18.647229+03
-      10 | 13237 |     20 |   1411 |      1411 |      1 | 2021-11-29 22:13:15.476547+03
-   16412 | 16459 |     20 |    132 |  16908420 |   2030 | 2021-11-12 14:15:04.619064+03
-   16412 | 16459 |     21 |    512 | 100663808 |     60 | 2021-11-19 01:56:57.103111+03
-   16412 | 16459 |     20 |    386 |       386 |   2043 | 2021-11-12 14:15:18.67885+03
-      10 | 13237 |     20 |    132 |  16908420 |     32 | 2021-12-01 13:49:18.950681+03
-      10 | 13237 |     20 |    132 |  52461700 |      1 | 2021-11-13 00:10:32.884677+03
-      10 | 13237 |     20 |    132 |  33583236 |      2 | 2021-11-13 00:59:09.900757+03
-   16412 | 16459 |     20 |    130 |  33685634 |   2112 | 2021-11-12 14:15:18.689152+03
-   16412 | 16459 |     20 |    132 |  50360452 |   2027 | 2021-11-12 14:15:04.630541+03
-      10 | 13237 |     20 |    132 |  16801924 |     13 | 2021-12-01 13:51:41.061942+03
-      10 | 13237 |     20 |    132 | 101744772 |      1 | 2021-11-29 22:12:50.363787+03
-   16412 | 16459 |     20 |    194 |  83906754 |    415 | 2021-11-12 14:12:39.77022+03
-      10 | 13237 |     20 |     66 |        66 |      1 | 2021-11-13 00:28:40.049738+03
-      10 | 13237 |     21 |    453 |  16908741 |      3 | 2021-11-19 00:40:36.168558+03
-   16412 | 16459 |     20 |    130 | 134217858 |   2041 | 2021-11-12 14:15:18.673896+03
-   16412 | 16459 |     20 |    132 |  16797828 |   2048 | 2021-11-12 14:15:18.668496+03
-   16412 | 16459 |     20 |    132 | 117571716 |   2054 | 2021-11-12 14:15:18.663046+03
-      10 | 13237 |     20 |    453 |  67371461 |    144 | 2021-11-19 03:51:06.922327+03
-      10 | 13237 |     20 |    132 |  50360452 |      6 | 2021-11-13 00:59:48.703543+03
-      10 | 13237 |     21 |    512 | 100663808 |    175 | 2021-11-19 09:53:36.775614+03
- (22 rows)
+ postgres=# select * from pg_stat_errors;
+  userid | dbid  | error_level | error_class |             error_class_message             | error_state |      error_state_message      | errors |           last_time            
+ --------+-------+-------------+-------------+---------------------------------------------+-------------+-------------------------------+-----------+--------------------------------
+      10 | 13031 | ERROR       | 42          | syntax_error_or_access_rule_violation       | 42P01       | undefined_table               | 216505 | 03/08/2022 17:01:13.720858 MSK
+      10 | 13031 | ERROR       | 42          | syntax_error_or_access_rule_violation       | 42883       | undefined_function            |      1 | 03/08/2022 17:18:15.281307 MSK
+      10 | 13031 | FATAL       | 57          | operator_intervention                       | 57P01       | admin_shutdown                |      6 | 02/08/2022 14:40:53.716727 MSK
+      10 | 13031 | ERROR       | 22          | data_exception                              | 22P02       | invalid_text_representation   | 185384 | 03/08/2022 17:01:13.720021 MSK
+      10 | 13031 | ERROR       | P0          | plpgsql_error                               | P0001       | raise_exception               | 812864 | 03/08/2022 17:01:13.716421 MSK
+      10 | 13031 | ERROR       | 42          | syntax_error_or_access_rule_violation       | 42703       | undefined_column              | 406142 | 03/08/2022 17:01:13.716944 MSK
+      10 | 13031 | WARNING     | 01          | unknown                                     | 01000       | unknown                       | 736343 | 03/08/2022 17:01:13.71537 MSK
+      10 | 13031 | ERROR       | 26          | invalid_sql_statement_name                  | 26000       | invalid_sql_statement_name    | 138501 | 03/08/2022 17:01:13.705456 MSK
+      10 | 13031 | ERROR       | 42          | syntax_error_or_access_rule_violation       | 42710       | duplicate_object              |      1 | 03/08/2022 17:24:18.687203 MSK
+      10 | 13031 | ERROR       | 42          | syntax_error_or_access_rule_violation       | 42P07       | duplicate_table               | 232318 | 03/08/2022 17:01:13.720615 MSK
+      10 | 13031 | ERROR       | 2B          | dependent_privilege_descriptors_still_exist | 2BP01       | dependent_objects_still_exist |      1 | 03/08/2022 17:04:17.456739 MSK
+ (11 rows)
 
 ::
 
