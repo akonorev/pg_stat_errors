@@ -1029,34 +1029,49 @@ pg_stat_errors_total_errors(PG_FUNCTION_ARGS)
 /*
  * Get error code as text
  */
+static char *
+get_code_as_text(int ecode)
+{
+	static char    ecode_text[SQLSTATE_LEN] = {0};
+
+	snprintf(ecode_text, SQLSTATE_LEN, "%s", unpack_sql_state(ecode));
+
+	return ecode_text;
+}
+
 Datum
 pg_stat_errors_gcode(PG_FUNCTION_ARGS)
 {
 	int     ecode = PG_GETARG_INT64(0);
-	char    ecode_text[SQLSTATE_LEN] = {0};
 
-	snprintf(ecode_text, SQLSTATE_LEN, "%s", unpack_sql_state(ecode));
-
-	PG_RETURN_TEXT_P(cstring_to_text(ecode_text));
+	PG_RETURN_TEXT_P(cstring_to_text(get_code_as_text(ecode)));
 }
+
 
 /*
  * Get error message
  */
-Datum
-pg_stat_errors_gmessage(PG_FUNCTION_ARGS)
+static char *
+get_message_by_code(int ecode)
 {
-	int     ecode = PG_GETARG_INT64(0);
-	char    *result;
+	char    *result = "";
 
-	switch (ecode) 
+	switch (ecode)
 	{
 #include "ecodes.inc"
 		default:
 			result = "unknown";
 	}
-    
-	PG_RETURN_TEXT_P(cstring_to_text(result));
+
+	return result;
+}
+
+Datum
+pg_stat_errors_gmessage(PG_FUNCTION_ARGS)
+{
+	int     ecode = PG_GETARG_INT64(0);
+
+	PG_RETURN_TEXT_P(cstring_to_text(get_message_by_code(ecode)));
 }
 
 
@@ -1064,10 +1079,9 @@ pg_stat_errors_gmessage(PG_FUNCTION_ARGS)
  * Get error level as text
  * only WARNING, ERROR, FATAL, PANIC error level codes are allowed
  */
-Datum
-pg_stat_errors_glevel(PG_FUNCTION_ARGS)
+static char *
+get_level_as_text(int elevel)
 {
-	int     elevel = PG_GETARG_INT64(0);
 	char    *elevel_text = "";
 
 	switch (elevel)
@@ -1089,7 +1103,15 @@ pg_stat_errors_glevel(PG_FUNCTION_ARGS)
 			elog(LOG, "pg_stat_errors: %s(): incorrect error level code. [%d]", __FUNCTION__, elevel);
 	}
 
-	PG_RETURN_TEXT_P(cstring_to_text(elevel_text));
+	return elevel_text;
+}
+
+Datum
+pg_stat_errors_glevel(PG_FUNCTION_ARGS)
+{
+	int     elevel = PG_GETARG_INT64(0);
+
+	PG_RETURN_TEXT_P(cstring_to_text(get_level_as_text(elevel)));
 }
 
 
