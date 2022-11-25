@@ -196,7 +196,7 @@ static void pgse_shmem_startup(void);
 static void pgse_shmem_shutdown(int code, Datum arg);
 static void pgse_emit_log_hook(ErrorData *edata);
 
-#if (PG_VERSION_NUM < 90600)
+#if PG_VERSION_NUM < 90600
 static uint32 pgse_hash_fn(const void *key, Size keysize);
 static int pgse_match_fn(const void *key1, const void *key2, Size keysize);
 #endif
@@ -273,7 +273,7 @@ _PG_init(void)
 	 * resources in pgse_shmem_startup().
 	 */
 	RequestAddinShmemSpace(pgse_memsize());
-#if (PG_VERSION_NUM >= 90600)
+#if PG_VERSION_NUM >= 90600
 	RequestNamedLWLockTranche("pg_stat_errors", 1);
 #else
 	RequestAddinLWLocks(1);
@@ -340,7 +340,7 @@ pgse_shmem_startup(void)
 	if (!found)
 	{
 		/* First time through ... */
-#if (PG_VERSION_NUM >= 90600)
+#if PG_VERSION_NUM >= 90600
 		pgse->lock = &(GetNamedLWLockTranche("pg_stat_errors"))->lock;
 #else
 		pgse->lock = LWLockAssign();
@@ -352,7 +352,7 @@ pgse_shmem_startup(void)
 	memset(&info, 0, sizeof(info));
 	info.keysize = sizeof(pgseHashKey);
 	info.entrysize = sizeof(pgseEntry);
-#if (PG_VERSION_NUM < 90600)
+#if PG_VERSION_NUM < 90600
 	info.hash = pgse_hash_fn;
 	info.match = pgse_match_fn;
 
@@ -579,7 +579,7 @@ pgse_shmem_shutdown(int code, Datum arg)
 		goto error;
 	}
 
-#if (PG_VERSION_NUM >= 90407)
+#if PG_VERSION_NUM >= 90407
 	/*
 	 * Rename file into place, so we atomically replace any old one.
 	 */
@@ -629,7 +629,7 @@ exit:
 }
 
 
-#if (PG_VERSION_NUM < 90600)
+#if PG_VERSION_NUM < 90600
 /*
  * Calculate hash value for a key
  */
