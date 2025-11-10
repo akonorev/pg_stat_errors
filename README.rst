@@ -319,7 +319,7 @@ Dashboard
 Compatibility
 -------------
 
-``pg_stat_errors`` is compatible with the PostgreSQL 9.4, 9.5, 9.6, 10, 11, 12, 13 and 14 releases.
+``pg_stat_errors`` is compatible with the PostgreSQL from 9.4 to 18 releases.
 
 Authors
 -------
